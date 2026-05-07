@@ -1,0 +1,9 @@
+{
+  "name": "com.yato.drive_to_explorer",
+  "description": "Drive (Web) -> Explorer launcher native host",
+  "path": "drive_to_explorer_host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+  ]
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build / packaging
+*.zip
+*.crx
+*.pem
+dist/
+build/
+
+# Local-only (拡張ID を入れた状態の manifest をうっかり commit しないように)
+# native-host/manifest.local.json

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Drive to Explorer - 設定</title>
+  <style>
+    body { font-family: "Segoe UI", "Yu Gothic UI", sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p.lead { color: #666; margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { background: #fafafa; font-size: 12px; color: #555; font-weight: 600; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; }
+    button { font: inherit; padding: 4px 10px; border: 1px solid #ccc; background: #fafafa; border-radius: 4px; cursor: pointer; }
+    button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    button.danger { color: #c0392b; }
+    .actions { margin-top: 12px; display: flex; gap: 8px; }
+    .status { margin-top: 12px; min-height: 1.5em; }
+    .ok { color: #1a7f37; }
+    .err { color: #c0392b; }
+    .muted { color: #888; font-size: 12px; }
+    code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Drive to Explorer - 設定</h1>
+  <p class="lead">Drive for desktop がマウントされているローカルのルートパスを 1 つだけ指定します。</p>
+  <p class="muted">
+    例: <code>M:\</code> や <code>G:\</code>。Drive 階層 (マイドライブ / 共有ドライブ / フォルダ名…) が、このルート配下にそのままミラーされていることが前提です。
+  </p>
+
+  <table>
+    <tr>
+      <td style="width: 200px"><label for="localRoot">ローカルルートパス</label></td>
+      <td><input type="text" id="localRoot" placeholder="例: M:\" autocomplete="off"></td>
+    </tr>
+  </table>
+
+  <div class="actions">
+    <button class="primary" id="saveBtn">保存</button>
+    <button id="testBtn">ルート存在チェック</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

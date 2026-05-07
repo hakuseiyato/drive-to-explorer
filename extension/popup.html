@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Drive to Explorer</title>
+  <style>
+    body { font-family: "Segoe UI", "Yu Gothic UI", sans-serif; min-width: 320px; margin: 0; padding: 12px; font-size: 13px; color: #222; }
+    h1 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+    .row { margin-bottom: 8px; word-break: break-all; }
+    .label { color: #666; font-size: 11px; margin-bottom: 2px; }
+    .path { background: #f4f4f4; padding: 6px 8px; border-radius: 4px; font-family: Consolas, monospace; }
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    button { font: inherit; padding: 6px 10px; border: 1px solid #ccc; background: #fafafa; border-radius: 4px; cursor: pointer; }
+    button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .muted { color: #999; }
+    .err { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <h1>Drive to Explorer</h1>
+  <div class="row">
+    <div class="label">Drive 階層</div>
+    <div class="path" id="breadcrumbs">―</div>
+  </div>
+  <div class="row">
+    <div class="label">ローカルパス</div>
+    <div class="path" id="localPath">―</div>
+  </div>
+  <div class="row" id="status"></div>
+  <div class="actions">
+    <button class="primary" id="openBtn" disabled>エクスプローラーで開く</button>
+    <button id="optionsBtn">設定</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
