@@ -94,7 +94,37 @@ drive-to-explorer/
 
 ---
 
-### 4. (任意) Python 不要モード — `.exe` 化
+### 4. (任意・推奨) Drive REST API + OAuth セットアップ
+
+DOM 解析の脆さ (Drive UI 変更で壊れるリスク) を回避し、API 経由で堅牢にパスを解決します。
+設定後は「パスを表示」popup フラッシュも不要になります。
+
+#### A. Google Cloud Console で OAuth クライアントを作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクト作成 (既存のものでも可)
+2. **API ライブラリ** → 「Google Drive API」を有効化
+3. **OAuth 同意画面** を構成
+   - User Type: 外部
+   - スコープ追加で `.../auth/drive.metadata.readonly` を追加 (検索: `drive.metadata.readonly`)
+   - テストユーザーに自分の Gmail を追加
+4. **認証情報** → **「OAuth クライアント ID を作成」** → 種類は **「ウェブ アプリケーション」**
+5. **承認済みのリダイレクト URI** に拡張オプション画面に表示される URI を追加 (後述 B 参照)
+   - 形式: `https://<extension_id>.chromiumapp.org/`
+6. 発行された **クライアント ID** をコピー (例: `1234567890-abc...apps.googleusercontent.com`)
+
+#### B. 拡張オプションに登録
+
+1. 拡張オプション画面を開く
+2. **「リダイレクト URI」欄の文字列**をコピー → Google Cloud のリダイレクト URI 欄に追加 (上記 5)
+3. **「OAuth Client ID」**にコピーしたクライアント ID を貼り付け → 「Client ID 保存」
+4. 「サインイン」ボタンをクリック → Google アカウント選択 → 権限承認
+5. 「✓ サインイン済み」と出れば完了
+
+> **挙動**: API は最優先で試行され、失敗時 (Client ID 未設定 / トークン失効 / オフライン) は自動的に DOM 解析にフォールバックします。
+>
+> **権限スコープ**: `drive.metadata.readonly` のみ — フォルダ名・親情報のみ参照。ファイル内容は読みません。
+
+### 5. (任意) Python 不要モード — `.exe` 化
 
 配布先の PC に Python を入れたくない場合、**ビルド側で 1 度だけ** `.exe` を生成して同梱する：
 
