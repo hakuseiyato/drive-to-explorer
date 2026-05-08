@@ -54,8 +54,9 @@ async function refresh() {
   }
   $("localPath").textContent = resp.localPath || "―";
   $("openBtn").disabled = false;
+  $("copyBtn").disabled = false;
   status.innerHTML =
-    '<span class="muted">「エクスプローラーで開く」で完全パスを取得します。</span>';
+    '<span class="muted">クリック時に完全パスを取得します。</span>';
 }
 
 $("openBtn").addEventListener("click", async () => {
@@ -91,6 +92,49 @@ $("openBtn").addEventListener("click", async () => {
   $("openBtn").disabled = false;
   const err = (resp && resp.error) || "不明なエラー";
   status.innerHTML = `<span class="err">起動失敗: ${err}<br>右クリックメニューからの起動もお試しください。</span>`;
+});
+
+$("copyBtn").addEventListener("click", async () => {
+  const status = $("status");
+  $("copyBtn").disabled = true;
+  status.textContent = "完全パスを取得中…";
+
+  const full = await fetchFullPathWithActivation();
+  let breadcrumbs = full && full.breadcrumbs && full.breadcrumbs.length
+    ? full.breadcrumbs
+    : null;
+
+  // フォールバック: 表示用 quick breadcrumbs を使う
+  if (!breadcrumbs) {
+    const r = await chrome.runtime.sendMessage({ type: "resolvePath", quick: true });
+    breadcrumbs = (r && r.breadcrumbs) || [];
+  }
+
+  if (!breadcrumbs.length) {
+    $("copyBtn").disabled = false;
+    status.innerHTML = '<span class="err">Drive 階層を取得できませんでした。</span>';
+    return;
+  }
+  $("breadcrumbs").textContent = breadcrumbs.join(" / ");
+
+  const resp = await chrome.runtime.sendMessage({
+    type: "resolveTargetPath",
+    target: { kind: "current", breadcrumbs },
+  });
+  if (!resp || !resp.ok || !resp.path) {
+    $("copyBtn").disabled = false;
+    status.innerHTML = `<span class="err">パス解決失敗: ${(resp && resp.error) || ""}</span>`;
+    return;
+  }
+  $("localPath").textContent = resp.path;
+  try {
+    await navigator.clipboard.writeText(resp.path);
+    const tag = resp.warning ? ` <span class="muted">(${resp.warning})</span>` : "";
+    status.innerHTML = `<span class="muted">✓ コピーしました${tag}</span>`;
+  } catch (e) {
+    status.innerHTML = `<span class="err">コピー失敗: ${e.message}</span>`;
+  }
+  $("copyBtn").disabled = false;
 });
 
 $("optionsBtn").addEventListener("click", () => {

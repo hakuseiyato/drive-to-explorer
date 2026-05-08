@@ -283,6 +283,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse(r);
         return;
       }
+      if (msg.type === "resolveTargetPath") {
+        // 開かずにローカルパスだけ計算して返す (コピー用)
+        const target = msg.target || {};
+        const breadcrumbs = target.breadcrumbs || [];
+        if (breadcrumbs.length === 0) {
+          sendResponse({ ok: false, error: "Drive 階層が取得できませんでした" });
+          return;
+        }
+        const localRoot = await getLocalRoot();
+        if (!localRoot) {
+          sendResponse({ ok: false, error: "ローカルルート未設定" });
+          return;
+        }
+        const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoot);
+        const buildFinal = (base) => {
+          if (target.kind === "folder" && target.name) return base + "\\" + target.name;
+          if (target.kind === "file" && target.name) return base + "\\" + target.name;
+          return base;
+        };
+        // 存在するものを優先
+        for (const base of baseCandidates) {
+          const candidate = buildFinal(base);
+          const r = await sendToHost({ action: "exists", path: candidate });
+          if (r && r.ok && r.exists) {
+            sendResponse({ ok: true, path: candidate });
+            return;
+          }
+          // host 未登録などの致命的エラー: 通信せず候補だけ返す
+          if (r && !r.ok && isHostMissingError(r.error)) {
+            sendResponse({
+              ok: true,
+              path: candidate,
+              warning: "Native Host 未登録のため存在確認はスキップ",
+            });
+            return;
+          }
+        }
+        // どれも存在しなかった: 1 番目の候補を warning 付きで返す
+        sendResponse({
+          ok: true,
+          path: buildFinal(baseCandidates[0]),
+          warning: "存在確認できませんでした",
+        });
+        return;
+      }
       if (msg.type === "openTargetWithBreadcrumbs") {
         // popup から「完全な breadcrumb」が指定されて開く
         const r = await runOpen({

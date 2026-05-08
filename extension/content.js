@@ -612,13 +612,106 @@
   }
 
   // ----------------------------------------------------------------------
+  // トースト
+  // ----------------------------------------------------------------------
+  function showToast(message, kind) {
+    const t = document.createElement("div");
+    let bg = "#222";
+    if (kind === "ok") bg = "#1f7a3a";
+    else if (kind === "err") bg = "#a52a2a";
+    t.style.cssText =
+      "position:fixed;bottom:24px;right:24px;z-index:2147483647;" +
+      "background:" + bg + ";color:#fff;padding:12px 16px;border-radius:6px;" +
+      "font:13px/1.4 'Segoe UI','Yu Gothic UI',sans-serif;max-width:560px;" +
+      "box-shadow:0 4px 16px rgba(0,0,0,0.3);word-break:break-all;";
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => {
+      try { t.remove(); } catch (_) {}
+    }, 4500);
+  }
+
+  // クリップボード書込 (失敗時は手動コピー用ダイアログ)
+  async function copyTextWithFallback(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      dlog("clipboard write failed, using fallback", e);
+    }
+    // フォールバック: モーダルにテキストを出して手動コピー
+    showCopyDialog(text);
+    return false;
+  }
+
+  function showCopyDialog(text) {
+    const back = document.createElement("div");
+    back.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);" +
+      "display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText =
+      "background:#fff;color:#222;padding:20px;border-radius:8px;max-width:640px;" +
+      "font:14px/1.5 'Segoe UI','Yu Gothic UI',sans-serif;";
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText =
+      "width:100%;height:60px;font:13px/1.4 monospace;box-sizing:border-box;" +
+      "padding:6px;border:1px solid #ccc;border-radius:4px;";
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "margin-top:12px;display:flex;gap:8px;justify-content:flex-end;";
+    const copyBtn = document.createElement("button");
+    copyBtn.textContent = "コピー";
+    copyBtn.style.cssText =
+      "padding:6px 14px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;" +
+      "border-radius:4px;cursor:pointer;font:inherit;";
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "閉じる";
+    closeBtn.style.cssText =
+      "padding:6px 14px;border:1px solid #ccc;background:#fafafa;color:#222;" +
+      "border-radius:4px;cursor:pointer;font:inherit;";
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.textContent = "✓ コピー完了";
+      } catch (_) {
+        ta.select();
+        document.execCommand("copy");
+        copyBtn.textContent = "✓ コピー完了";
+      }
+    });
+    closeBtn.addEventListener("click", () => back.remove());
+    back.addEventListener("click", (e) => { if (e.target === back) back.remove(); });
+
+    box.innerHTML = '<div style="font-weight:600;margin-bottom:8px;">ローカルパス</div>';
+    box.appendChild(ta);
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(closeBtn);
+    box.appendChild(btnRow);
+    back.appendChild(box);
+    document.body.appendChild(back);
+    setTimeout(() => ta.select(), 50);
+  }
+
+  // ----------------------------------------------------------------------
   // メニュー注入
   // ----------------------------------------------------------------------
-  const INJECT_MARKER = "data-dte-injected";
-  const LABEL = "エクスプローラーで開く";
+  const INJECT_OPEN_MARKER = "data-dte-injected-open";
+  const INJECT_COPY_MARKER = "data-dte-injected-copy";
+  const INJECT_ITEMS = [
+    { marker: INJECT_OPEN_MARKER, label: "エクスプローラーで開く", action: "open" },
+    { marker: INJECT_COPY_MARKER, label: "ローカルパスをコピー", action: "copy" },
+  ];
 
   function injectIntoMenu(menuRoot) {
-    if (!menuRoot || menuRoot.querySelector(`[${INJECT_MARKER}]`)) return false;
+    if (!menuRoot) return false;
+    // すべて注入済みなら skip
+    if (
+      menuRoot.querySelector(`[${INJECT_OPEN_MARKER}]`) &&
+      menuRoot.querySelector(`[${INJECT_COPY_MARKER}]`)
+    ) {
+      return false;
+    }
     let items = Array.from(menuRoot.querySelectorAll('[role="menuitem"]'));
     const enabled = items.filter(
       (el) => el.getAttribute("aria-disabled") !== "true"
@@ -644,80 +737,115 @@
     const template = items[items.length - 1];
     if (!template || !template.parentElement) return false;
 
-    const clone = template.cloneNode(true);
-    clone.setAttribute(INJECT_MARKER, "1");
-    clone.setAttribute("role", "menuitem");
-    clone.removeAttribute("aria-disabled");
-    clone.style.cursor = "pointer";
+    let injectedAny = false;
+    let prevSibling = template;
+    for (const itemDef of INJECT_ITEMS) {
+      if (menuRoot.querySelector(`[${itemDef.marker}]`)) continue;
+      const clone = template.cloneNode(true);
+      clone.setAttribute(itemDef.marker, "1");
+      clone.setAttribute("role", "menuitem");
+      clone.removeAttribute("aria-disabled");
+      clone.style.cursor = "pointer";
 
-    // ラベル差し替え
-    const all = clone.querySelectorAll("*");
-    let labelEl = null;
-    let bestLen = 0;
-    all.forEach((el) => {
-      if (el.children.length === 0) {
-        const t = (el.textContent || "").trim();
-        if (t.length > bestLen) {
-          bestLen = t.length;
-          labelEl = el;
+      // ラベル差し替え
+      const all = clone.querySelectorAll("*");
+      let labelEl = null;
+      let bestLen = 0;
+      all.forEach((el) => {
+        if (el.children.length === 0) {
+          const t = (el.textContent || "").trim();
+          if (t.length > bestLen) {
+            bestLen = t.length;
+            labelEl = el;
+          }
         }
-      }
-    });
-    if (labelEl) labelEl.textContent = LABEL;
-    else clone.textContent = LABEL;
+      });
+      if (labelEl) labelEl.textContent = itemDef.label;
+      else clone.textContent = itemDef.label;
 
-    // アイコン非表示
-    clone.querySelectorAll('img, svg, [role="img"]').forEach((ic) => {
-      try { ic.style.visibility = "hidden"; } catch (_) {}
-    });
+      clone.querySelectorAll('img, svg, [role="img"]').forEach((ic) => {
+        try { ic.style.visibility = "hidden"; } catch (_) {}
+      });
 
-    const handler = async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation && ev.stopImmediatePropagation();
+      const action = itemDef.action;
+      const handler = async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation && ev.stopImmediatePropagation();
 
-      // 1. 行情報を即時キャプチャ
-      const partial = getSelectedTargetSync();
+        const partial = getSelectedTargetSync();
 
-      // 2. 右クリックメニューを閉じる
-      try {
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
-        );
-        document.body.click();
-      } catch (_) {}
-      await sleep(80);
+        try {
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+          );
+          document.body.click();
+        } catch (_) {}
+        await sleep(80);
 
-      // 3. 完全パスを取得
-      const breadcrumbs = await getFullBreadcrumbs();
+        const breadcrumbs = await getFullBreadcrumbs();
+        const target = {
+          kind: partial.kind,
+          name: partial.name,
+          breadcrumbs: breadcrumbs || [],
+        };
+        dlog("clicked", action, "target=", target);
 
-      const target = {
-        kind: partial.kind,
-        name: partial.name,
-        breadcrumbs: breadcrumbs || [],
+        if (action === "open") {
+          try {
+            chrome.runtime.sendMessage({ type: "openTarget", target });
+          } catch (e) {
+            dlog("sendMessage failed", e);
+          }
+        } else if (action === "copy") {
+          chrome.runtime.sendMessage(
+            { type: "resolveTargetPath", target },
+            async (resp) => {
+              if (chrome.runtime.lastError) {
+                showToast("拡張通信エラー: " + chrome.runtime.lastError.message, "err");
+                return;
+              }
+              if (!resp || !resp.ok || !resp.path) {
+                showToast(
+                  "パス解決失敗: " + ((resp && resp.error) || "不明なエラー"),
+                  "err"
+                );
+                return;
+              }
+              const ok = await copyTextWithFallback(resp.path);
+              if (ok) {
+                const tag = resp.warning ? " (存在未確認)" : "";
+                showToast("コピーしました" + tag + ": " + resp.path, "ok");
+              }
+            }
+          );
+        }
       };
-      dlog("clicked, target=", target);
-      try {
-        chrome.runtime.sendMessage({ type: "openTarget", target });
-      } catch (e) {
-        dlog("sendMessage failed", e);
-      }
-    };
-    clone.addEventListener("mousedown", handler, true);
-    clone.addEventListener("click", handler, true);
+      clone.addEventListener("mousedown", handler, true);
+      clone.addEventListener("click", handler, true);
 
-    template.insertAdjacentElement("afterend", clone);
-    dlog("injected");
-    return true;
+      prevSibling.insertAdjacentElement("afterend", clone);
+      prevSibling = clone;
+      injectedAny = true;
+    }
+    if (injectedAny) dlog("injected items");
+    return injectedAny;
   }
 
   // ----------------------------------------------------------------------
   // 監視
   // ----------------------------------------------------------------------
+  function isFullyInjected(menu) {
+    return (
+      menu.querySelector(`[${INJECT_OPEN_MARKER}]`) &&
+      menu.querySelector(`[${INJECT_COPY_MARKER}]`)
+    );
+  }
+
   function tryInjectAll() {
     const menus = document.querySelectorAll('[role="menu"]');
     for (const menu of menus) {
-      if (menu.querySelector(`[${INJECT_MARKER}]`)) continue;
+      if (isFullyInjected(menu)) continue;
       if (!isFolderInfoSubmenu(menu)) continue;
       injectIntoMenu(menu);
     }
@@ -729,14 +857,14 @@
         if (!node || node.nodeType !== 1) continue;
         const menus = collectMenus(node);
         for (const menu of menus) {
-          if (menu.querySelector(`[${INJECT_MARKER}]`)) continue;
+          if (isFullyInjected(menu)) continue;
           if (!isFolderInfoSubmenu(menu)) continue;
           injectIntoMenu(menu);
         }
       }
       if (m.target && m.target.nodeType === 1) {
         const menu = m.target.closest && m.target.closest('[role="menu"]');
-        if (menu && !menu.querySelector(`[${INJECT_MARKER}]`) && isFolderInfoSubmenu(menu)) {
+        if (menu && !isFullyInjected(menu) && isFolderInfoSubmenu(menu)) {
           injectIntoMenu(menu);
         }
       }
