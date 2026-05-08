@@ -44,9 +44,10 @@ drive-to-explorer/
 ## セットアップ
 
 ### 前提
-- **Python 3** がインストール済みで、`py` または `python` で起動できること
-  （確認: `py -3 -V` または `python -V`）
 - **Drive for desktop** がインストールされ、ドライブレター (例: `I:\`) でマウントされていること
+- 以下のいずれかを満たすこと:
+  - **Python 3** がインストール済みで、`py` または `python` で起動できる（確認: `py -3 -V` または `python -V`）
+  - もしくは事前ビルド済みの `native-host/drive_to_explorer_host.exe` が同梱されている（後述「Python 不要モード」参照）
 
 ### 1. 拡張機能を読み込む
 
@@ -90,6 +91,21 @@ drive-to-explorer/
 3. 「ルート存在チェック」 → 「保存」
 
 > **パス解決について**: Drive for desktop は共有ドライブを `<root>\共有ドライブ\<drive名>\...`、マイドライブを `<root>\マイドライブ\...` 配下にミラーします。本拡張はルートを起点に「直下」「`共有ドライブ\`」「`マイドライブ\`」（英語版 `Shared drives\` / `My Drive\` も）を**自動で順次試行**し、最初に存在するパスを開きます。なのでルートはドライブレターのみ (例: `I:\`) を指定すれば OK です。
+
+---
+
+### 4. (任意) Python 不要モード — `.exe` 化
+
+配布先の PC に Python を入れたくない場合、**ビルド側で 1 度だけ** `.exe` を生成して同梱する：
+
+1. ビルドする PC で `pip install pyinstaller` （初回のみ）
+2. `native-host/build.bat` をダブルクリック実行
+   - `pyinstaller --onefile --noconsole drive_to_explorer_host.py` 相当を実行
+   - 同フォルダに `drive_to_explorer_host.exe` が生成される
+3. 配布先には `extension/` と `native-host/`（`.exe` 入り）を渡せば OK
+4. 配布先で `install.bat` を実行 → `drive_to_explorer_host.bat` は **`.exe` があれば優先**、無ければ Python にフォールバック
+
+> ウイルス対策ソフトが PyInstaller の onefile を誤検出することがあります。除外設定するか、Python ありモードで運用してください。
 
 ---
 

@@ -1,14 +1,19 @@
 @echo off
-REM Chrome Native Messaging Host ラッパー
-REM Chrome は stdin/stdout でこの bat と通信するため、余計な出力を出さないこと。
+REM Native Messaging Host wrapper.
+REM Chrome / Brave / Edge invokes this via stdin/stdout - DO NOT print to stdout.
+REM Strategy: prefer pre-built exe (PyInstaller), fall back to Python.
 
 setlocal
-set "SCRIPT_DIR=%~dp0"
+set "DIR=%~dp0"
 
-REM Python ランチャー優先、無ければ python を試す
+if exist "%DIR%drive_to_explorer_host.exe" (
+    "%DIR%drive_to_explorer_host.exe"
+    exit /b
+)
+
 where py >nul 2>&1
 if %errorlevel%==0 (
-    py -3 "%SCRIPT_DIR%drive_to_explorer_host.py"
+    py -3 "%DIR%drive_to_explorer_host.py"
 ) else (
-    python "%SCRIPT_DIR%drive_to_explorer_host.py"
+    python "%DIR%drive_to_explorer_host.py"
 )

@@ -20,6 +20,10 @@ Thumbs.db
 *.pem
 dist/
 build/
+*.spec
+
+# PyInstaller 成果物 (各環境でビルドする想定。リリース時のみアセット添付)
+native-host/drive_to_explorer_host.exe
 
 # Local-only (拡張ID を入れた状態の manifest をうっかり commit しないように)
 # native-host/manifest.local.json
