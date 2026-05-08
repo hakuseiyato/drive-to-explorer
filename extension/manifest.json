@@ -9,10 +9,13 @@
     "contextMenus",
     "notifications",
     "activeTab",
-    "scripting"
+    "scripting",
+    "identity"
   ],
   "host_permissions": [
-    "https://drive.google.com/*"
+    "https://drive.google.com/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"

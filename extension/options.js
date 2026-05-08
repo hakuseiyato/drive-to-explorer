@@ -55,3 +55,69 @@ $("testBtn").addEventListener("click", async () => {
 });
 
 load();
+
+// =====================================================================
+// OAuth セクション
+// =====================================================================
+const oauthStatus = $("oauthStatus");
+
+async function refreshOAuthUi() {
+  const r = await chrome.runtime.sendMessage({ type: "apiGetRedirectUri" });
+  if (r && r.redirectUri) $("redirectUri").value = r.redirectUri;
+
+  const st = await chrome.runtime.sendMessage({ type: "apiStatus" });
+  if (!st || !st.ok) return;
+  if (!st.hasClientId) {
+    oauthStatus.innerHTML =
+      '<span class="muted">Client ID 未設定 — DOM 解析にフォールバックします。</span>';
+  } else if (!st.signedIn) {
+    oauthStatus.innerHTML =
+      '<span class="muted">Client ID 設定済み。サインインしていないため、必要時に対話認可が走ります。</span>';
+  } else {
+    oauthStatus.innerHTML =
+      '<span class="ok">✓ サインイン済み — API 経由でパス解決します。</span>';
+  }
+}
+
+async function loadClientId() {
+  const { oauthClientId = "" } = await chrome.storage.sync.get("oauthClientId");
+  $("oauthClientId").value = oauthClientId;
+}
+
+$("oauthSaveBtn").addEventListener("click", async () => {
+  const id = $("oauthClientId").value.trim();
+  const r = await chrome.runtime.sendMessage({
+    type: "apiSetClientId",
+    clientId: id,
+  });
+  if (r && r.ok) {
+    oauthStatus.innerHTML = '<span class="ok">Client ID を保存しました。</span>';
+    refreshOAuthUi();
+  } else {
+    oauthStatus.innerHTML = '<span class="err">保存失敗</span>';
+  }
+});
+
+$("oauthSignInBtn").addEventListener("click", async () => {
+  oauthStatus.textContent = "認可中…";
+  const r = await chrome.runtime.sendMessage({ type: "apiSignIn" });
+  if (r && r.ok) {
+    oauthStatus.innerHTML = '<span class="ok">✓ サインイン成功。</span>';
+    refreshOAuthUi();
+  } else {
+    oauthStatus.innerHTML = `<span class="err">サインイン失敗: ${(r && r.error) || ""}</span>`;
+  }
+});
+
+$("oauthSignOutBtn").addEventListener("click", async () => {
+  const r = await chrome.runtime.sendMessage({ type: "apiSignOut" });
+  if (r && r.ok) {
+    oauthStatus.innerHTML = '<span class="muted">サインアウトしました。</span>';
+    refreshOAuthUi();
+  } else {
+    oauthStatus.innerHTML = `<span class="err">サインアウト失敗: ${(r && r.error) || ""}</span>`;
+  }
+});
+
+loadClientId();
+refreshOAuthUi();

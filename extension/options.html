@@ -43,6 +43,40 @@
 
   <div class="status" id="status"></div>
 
+  <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
+
+  <h1 style="font-size: 16px;">Drive REST API (OAuth) — 任意・推奨</h1>
+  <p class="muted">
+    OAuth Client ID を登録すると、DOM 解析より遥かに信頼性の高い API 経由で Drive 階層を解決します。<br>
+    パス取得時の <code>パスを表示</code> popup フラッシュも不要になります。<br>
+    詳細手順: README の「OAuth セットアップ」セクション参照。
+  </p>
+
+  <table>
+    <tr>
+      <td style="width: 200px"><label for="redirectUri">リダイレクト URI</label></td>
+      <td>
+        <input type="text" id="redirectUri" readonly>
+        <div class="muted">これを Google Cloud の OAuth クライアントに「承認済みリダイレクト URI」として登録</div>
+      </td>
+    </tr>
+    <tr>
+      <td><label for="oauthClientId">OAuth Client ID</label></td>
+      <td>
+        <input type="text" id="oauthClientId" placeholder="xxxxxxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+        <div class="muted">「ウェブ アプリケーション」型のクライアント ID</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="actions">
+    <button class="primary" id="oauthSaveBtn">Client ID 保存</button>
+    <button id="oauthSignInBtn">サインイン</button>
+    <button class="danger" id="oauthSignOutBtn">サインアウト</button>
+  </div>
+
+  <div class="status" id="oauthStatus"></div>
+
   <script src="options.js"></script>
 </body>
 </html>
