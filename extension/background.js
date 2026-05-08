@@ -1,7 +1,10 @@
 // Drive to Explorer - service worker
 // - コンテキストメニュー登録
-// - popup / content からのメッセージ受信
+// - popup / content / options からのメッセージ受信
 // - Native Messaging Host への送信
+// - Drive REST API (OAuth) によるパス解決
+
+importScripts("drive_api.js");
 
 const HOST_NAME = "com.yato.drive_to_explorer";
 const CONTEXT_MENU_ID = "drive-to-explorer-open";
@@ -287,6 +290,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           breadcrumbs: msg.breadcrumbs || [],
         });
         sendResponse(r);
+        return;
+      }
+      // ---- Drive REST API (OAuth) -------------------------------------
+      if (msg.type === "apiResolvePath") {
+        try {
+          const path = await DTE_API.getFolderPathCached(msg.folderId);
+          sendResponse({ ok: true, breadcrumbs: path });
+        } catch (e) {
+          sendResponse({
+            ok: false,
+            error: String(e && e.message || e),
+            code: e && e.code,
+          });
+        }
+        return;
+      }
+      if (msg.type === "apiSignIn") {
+        try {
+          await DTE_API.signIn();
+          sendResponse({ ok: true });
+        } catch (e) {
+          sendResponse({ ok: false, error: String(e && e.message || e) });
+        }
+        return;
+      }
+      if (msg.type === "apiSignOut") {
+        try {
+          await DTE_API.signOut();
+          sendResponse({ ok: true });
+        } catch (e) {
+          sendResponse({ ok: false, error: String(e && e.message || e) });
+        }
+        return;
+      }
+      if (msg.type === "apiStatus") {
+        const st = await DTE_API.getStatus();
+        sendResponse({ ok: true, ...st });
+        return;
+      }
+      if (msg.type === "apiSetClientId") {
+        await DTE_API.setClientId(msg.clientId || "");
+        sendResponse({ ok: true });
+        return;
+      }
+      if (msg.type === "apiGetRedirectUri") {
+        sendResponse({ ok: true, redirectUri: chrome.identity.getRedirectURL() });
         return;
       }
       if (msg.type === "resolvePath") {

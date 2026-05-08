@@ -359,13 +359,59 @@
   }
 
   // 完全なパス取得 (メイン): まず「パスを表示」、ダメならフォールバック
+  // background に Drive API 経由のパス解決を依頼する
+  async function getBreadcrumbsByApi() {
+    const folderId = getFolderIdFromUrl();
+    if (!folderId) return null;
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          { type: "apiResolvePath", folderId },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              dlog("apiResolvePath lastError", chrome.runtime.lastError.message);
+              resolve(null);
+              return;
+            }
+            if (resp && resp.ok && resp.breadcrumbs && resp.breadcrumbs.length) {
+              resolve(resp.breadcrumbs);
+              return;
+            }
+            if (resp && resp.code === "NO_CLIENT_ID") {
+              dlog("API: client id not configured, fall back to DOM");
+            } else {
+              dlog("apiResolvePath failed", resp);
+            }
+            resolve(null);
+          }
+        );
+      } catch (e) {
+        dlog("apiResolvePath threw", e);
+        resolve(null);
+      }
+    });
+  }
+
+  // 完全なパス取得 (メイン): API → 「パスを表示」popup → DOM の順に試行
   async function getFullBreadcrumbs() {
+    // 1. Drive REST API (OAuth) - 設定済みなら最も信頼できる
+    try {
+      const api = await getBreadcrumbsByApi();
+      if (api && api.length) {
+        dlog("getFullBreadcrumbs: via API", api);
+        return api;
+      }
+    } catch (e) {
+      dlog("API path resolve threw", e);
+    }
+    // 2. パスを表示 popup 経由 (user activation 必要)
     try {
       const full = await readPathViaShowPath();
       if (full && full.length >= 1) return full;
     } catch (e) {
       dlog("readPathViaShowPath threw", e);
     }
+    // 3. DOM / title フォールバック
     return extractBreadcrumbs();
   }
 
