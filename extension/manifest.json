@@ -10,7 +10,8 @@
     "notifications",
     "activeTab",
     "scripting",
-    "identity"
+    "identity",
+    "alarms"
   ],
   "host_permissions": [
     "https://drive.google.com/*",

@@ -68,6 +68,11 @@ def validate_path(path: str) -> str:
 
 def handle(req: dict) -> dict:
     action = req.get("action")
+
+    # ping は path 不要 (生存確認用)
+    if action == "ping":
+        return {"ok": True, "pong": True}
+
     path = validate_path(req.get("path", ""))
 
     if action == "exists":

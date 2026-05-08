@@ -208,6 +208,20 @@ stdin に 4byte little-endian 長 + JSON、stdout に同形式（Chromium Native
 
 ---
 
+## ツールバーアイコンのバッジ
+
+ツールバーアイコンに小さなバッジが付くことがあります（5 分ごと + 設定変更時に自動更新）：
+
+| バッジ | 状態 | 対応 |
+|---|---|---|
+| 🔴 `!` (赤) | ローカルルートパス未設定 | オプション画面で `I:\` 等を設定 |
+| 🟠 `!` (橙) | Native Host 未登録 | `install.bat` を実行してブラウザ再起動 |
+| (バッジ無し) | 動作可能 | アイコンにマウスを乗せると詳細 (OAuth モード等) が tooltip 表示 |
+
+OAuth (#1) は任意機能なので未設定でもバッジは出ません。tooltip に `(DOM 解析モード)` 等で示されます。
+
+---
+
 ## トラブルシューティング
 
 ### 「Native host has exited」/「Specified native messaging host not found」

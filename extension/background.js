@@ -250,6 +250,88 @@ function notify(title, message) {
   }
 }
 
+// ---- バッジ更新 --------------------------------------------------------
+// 状態に応じてツールバーアイコンにバッジを表示する。
+//   localRoot 未設定        : 赤 "!"   (機能不全)
+//   Native Host 未登録      : 橙 "!"   (機能不全)
+//   OAuth 未設定 (任意)     : バッジ無し (DOM フォールバックで動作可能)
+//   全て OK                 : バッジ無し
+
+async function pingHost() {
+  const r = await sendToHost({ action: "ping" });
+  return !!(r && r.ok);
+}
+
+function setBadge(text, color, title) {
+  try {
+    chrome.action.setBadgeText({ text: text || "" });
+    if (color) chrome.action.setBadgeBackgroundColor({ color });
+    if (title) chrome.action.setTitle({ title });
+  } catch (e) {
+    // service worker 起動直後など稀に投げる
+  }
+}
+
+async function updateBadge() {
+  const localRoot = await getLocalRoot();
+  if (!localRoot) {
+    setBadge(
+      "!",
+      "#c0392b",
+      "Drive to Explorer — 設定未完了 (オプションでローカルルートパスを設定)"
+    );
+    return;
+  }
+  const hostOk = await pingHost();
+  if (!hostOk) {
+    setBadge(
+      "!",
+      "#e67e22",
+      "Drive to Explorer — Native Host 未登録 (install.bat を実行してください)"
+    );
+    return;
+  }
+  let apiNote = "";
+  try {
+    const apiStatus = await DTE_API.getStatus();
+    if (!apiStatus.hasClientId) {
+      apiNote = " (OAuth 未設定 - DOM 解析モード)";
+    } else if (!apiStatus.signedIn) {
+      apiNote = " (OAuth 未サインイン - 必要時に対話認可)";
+    } else {
+      apiNote = " (API モード)";
+    }
+  } catch (_) {}
+  setBadge("", "", "Drive to Explorer — 動作中" + apiNote);
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  updateBadge();
+  // 5 分ごとに再チェック (ホスト登録直後・OAuth サインイン直後の状態反映)
+  try {
+    chrome.alarms.create("dte-badge-refresh", { periodInMinutes: 5 });
+  } catch (_) {}
+});
+chrome.runtime.onStartup.addListener(() => {
+  updateBadge();
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm && alarm.name === "dte-badge-refresh") {
+    updateBadge();
+  }
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (
+    changes.localRoot ||
+    changes.oauthClientId ||
+    changes.oauthAccessToken
+  ) {
+    updateBadge();
+  }
+});
+// 起動時にも 1 度叩く (service worker は最初のメッセージで起きるため)
+updateBadge();
+
 // ---- コンテキストメニュー --------------------------------------------
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -371,6 +453,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.type === "apiStatus") {
         const st = await DTE_API.getStatus();
+        // popup / options から呼ばれた契機でバッジも更新する
+        updateBadge();
         sendResponse({ ok: true, ...st });
         return;
       }
