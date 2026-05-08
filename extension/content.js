@@ -10,6 +10,86 @@
   };
   dlog("content script loaded", location.href);
 
+  // ----------------------------------------------------------------------
+  // Explorer → Drive Web リダイレクト
+  // URL fragment "#dte_resolve=<encoded local path>" を検出して、
+  // ローカルパス → folderId 解決後 /drive/u/0/folders/<id> に遷移。
+  // ----------------------------------------------------------------------
+  (function handleDteResolveFragment() {
+    const hash = location.hash || "";
+    const m = hash.match(/dte_resolve=([^&]+)/);
+    if (!m) return;
+    let localPath = "";
+    try {
+      localPath = decodeURIComponent(m[1]);
+    } catch (_) {
+      return;
+    }
+    if (!localPath) return;
+
+    // 簡易オーバーレイで状態表示
+    const overlay = document.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;background:rgba(20,20,20,0.85);" +
+      "color:#fff;display:flex;align-items:center;justify-content:center;" +
+      "font:16px/1.5 'Segoe UI','Yu Gothic UI',sans-serif;text-align:center;padding:20px;";
+    overlay.innerHTML =
+      '<div><div style="font-size:18px;margin-bottom:12px;">Drive で開く</div>' +
+      '<div id="__dte_resolve_msg__" style="opacity:0.85;">解決中…</div>' +
+      '<div style="margin-top:12px;font-size:12px;opacity:0.6;">' +
+      escapeHtml(localPath) +
+      "</div></div>";
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+      );
+    }
+    function setMsg(t, color) {
+      const el = document.getElementById("__dte_resolve_msg__");
+      if (el) {
+        el.textContent = t;
+        if (color) el.style.color = color;
+      }
+    }
+    document.documentElement.appendChild(overlay);
+
+    // URL から fragment を消しておく (履歴を汚さない)
+    try {
+      history.replaceState(null, "", location.pathname + location.search);
+    } catch (_) {}
+
+    chrome.runtime.sendMessage(
+      { type: "resolveLocalPathToFolderId", localPath },
+      (resp) => {
+        if (chrome.runtime.lastError) {
+          setMsg("拡張通信エラー: " + chrome.runtime.lastError.message, "#ff8a8a");
+          return;
+        }
+        if (resp && resp.ok && resp.folderId) {
+          setMsg("遷移します…", "#a0e0a0");
+          setTimeout(() => {
+            location.replace(
+              "https://drive.google.com/drive/u/0/folders/" +
+                encodeURIComponent(resp.folderId)
+            );
+          }, 200);
+          return;
+        }
+        const errMsg = (resp && resp.error) || "解決に失敗しました";
+        const codeHint =
+          resp && resp.code === "NO_CLIENT_ID"
+            ? "\n\nオプション画面で OAuth Client ID を設定してサインインしてください。"
+            : "";
+        setMsg(errMsg + codeHint, "#ff8a8a");
+        // 5 秒後にオーバーレイを閉じる
+        setTimeout(() => {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        }, 8000);
+      }
+    );
+  })();
+
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ----------------------------------------------------------------------

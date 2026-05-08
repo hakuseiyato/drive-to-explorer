@@ -338,6 +338,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: true, redirectUri: chrome.identity.getRedirectURL() });
         return;
       }
+      if (msg.type === "resolveLocalPathToFolderId") {
+        try {
+          const folderId = await DTE_API.findFolderIdByLocalPath(msg.localPath);
+          sendResponse({ ok: true, folderId });
+        } catch (e) {
+          sendResponse({
+            ok: false,
+            error: String(e && e.message || e),
+            code: e && e.code,
+          });
+        }
+        return;
+      }
       if (msg.type === "resolvePath") {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         // quick モードでは「パスを表示」を叩かない (表示用)

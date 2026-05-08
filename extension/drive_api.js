@@ -213,6 +213,108 @@ const DTE_API = (() => {
     return path;
   }
 
+  async function listSharedDrives(token) {
+    const url =
+      "https://www.googleapis.com/drive/v3/drives" +
+      "?fields=drives(id,name)&pageSize=100";
+    const data = await apiGet(url, token);
+    return data.drives || [];
+  }
+
+  async function findChildByName(parentId, name, driveId, token) {
+    // Drive API では q パラメータの ' をエスケープする必要がある
+    const safeName = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const q =
+      "'" + parentId + "' in parents and name='" + safeName + "' and trashed=false";
+    let url =
+      "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(q) +
+      "&fields=files(id,name,mimeType,driveId)" +
+      "&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=10";
+    if (driveId) url += "&driveId=" + encodeURIComponent(driveId) + "&corpora=drive";
+    const data = await apiGet(url, token);
+    const files = data.files || [];
+    if (files.length === 0) return null;
+    // フォルダ優先 (同名ファイルがある場合)
+    const folder = files.find(
+      (f) => f.mimeType === "application/vnd.google-apps.folder"
+    );
+    return folder || files[0];
+  }
+
+  // ローカルパス -> Drive folderId
+  // localRoot, 共有ドライブ/マイドライブ プレフィックスを順次剥がし、
+  // 残りのセグメントを Drive 上で名前検索しながら辿る。
+  async function findFolderIdByLocalPath(localPath) {
+    if (!localPath) throw new Error("localPath 空");
+
+    const { localRoot = "" } = await chrome.storage.sync.get("localRoot");
+    let rel = String(localPath);
+
+    // localRoot を除去 (大文字小文字無視)
+    if (localRoot) {
+      const root = localRoot.replace(/[\\/]+$/, "");
+      if (rel.toLowerCase().startsWith(root.toLowerCase())) {
+        rel = rel.slice(root.length);
+      }
+    }
+    // ドライブレター単独 ("I:" 等) のフォールバック
+    if (/^[A-Za-z]:/.test(rel)) rel = rel.slice(2);
+
+    rel = rel.replace(/^[\\/]+/, "");
+
+    const parts = rel.split(/[\\/]+/).filter(Boolean);
+    if (parts.length === 0) {
+      throw new Error("ローカルパスにフォルダ階層がありません");
+    }
+
+    let token;
+    try {
+      token = await getAuthToken(false);
+    } catch (e) {
+      if (e.code === "NO_CLIENT_ID") throw e;
+      token = await getAuthToken(true);
+    }
+
+    let parentId;
+    let driveId = null;
+
+    // プレフィックス判定
+    const head = parts[0];
+    if (head === "共有ドライブ" || /^Shared drives$/i.test(head)) {
+      parts.shift();
+      if (parts.length === 0) throw new Error("共有ドライブ名が指定されていません");
+      const sharedName = parts.shift();
+      const drives = await listSharedDrives(token);
+      const drive = drives.find((d) => d.name === sharedName);
+      if (!drive) {
+        throw new Error("共有ドライブが見つかりません: " + sharedName);
+      }
+      parentId = drive.id;
+      driveId = drive.id;
+    } else if (head === "マイドライブ" || /^My Drive$/i.test(head)) {
+      parts.shift();
+      parentId = "root";
+    } else {
+      // プレフィックス無し: My Drive ルートと仮定
+      parentId = "root";
+    }
+
+    // 残セグメントを順次辿る
+    let currentId = parentId;
+    for (const seg of parts) {
+      const child = await findChildByName(currentId, seg, driveId, token);
+      if (!child) {
+        throw new Error("Drive にフォルダが見つかりません: " + seg);
+      }
+      currentId = child.id;
+      // ショートカット解決
+      if (child.shortcutDetails && child.shortcutDetails.targetId) {
+        currentId = child.shortcutDetails.targetId;
+      }
+    }
+    return currentId;
+  }
+
   async function getStatus() {
     const clientId = await getClientId();
     const token = await getCachedToken();
@@ -230,6 +332,7 @@ const DTE_API = (() => {
     signOut,
     resolveFolderPath,
     getFolderPathCached,
+    findFolderIdByLocalPath,
     getStatus,
     clearPathCache,
   };
