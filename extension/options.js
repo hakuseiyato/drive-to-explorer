@@ -57,6 +57,24 @@ $("testBtn").addEventListener("click", async () => {
 load();
 
 // =====================================================================
+// 拡張機能 ID 表示 / コピー
+// =====================================================================
+$("extensionId").value = chrome.runtime.id;
+$("copyIdBtn").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(chrome.runtime.id);
+    $("installStatus").innerHTML =
+      '<span class="ok">✓ ID をコピーしました。install.bat を起動して貼り付けてください。</span>';
+  } catch (e) {
+    // 権限フォールバック
+    $("extensionId").select();
+    document.execCommand("copy");
+    $("installStatus").innerHTML =
+      '<span class="ok">✓ ID をコピーしました (フォールバック)。</span>';
+  }
+});
+
+// =====================================================================
 // OAuth セクション
 // =====================================================================
 const oauthStatus = $("oauthStatus");

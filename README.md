@@ -64,25 +64,20 @@ drive-to-explorer/
 
 ### 2. Native Host を登録
 
-1. `native-host/manifest.json` をテキストエディタで開く
-2. `allowed_origins` の `REPLACE_WITH_EXTENSION_ID` を Step 1 でコピーした実 ID に置き換え：
-   ```json
-   {
-     "name": "com.yato.drive_to_explorer",
-     "description": "Drive (Web) -> Explorer launcher native host",
-     "path": "drive_to_explorer_host.bat",
-     "type": "stdio",
-     "allowed_origins": [
-       "chrome-extension://oabcdefghijklmnop1234567890abcdef/"
-     ]
-   }
-   ```
-   末尾の `/` を消さないこと、`chrome-extension://` プレフィックスは Brave 等でも変えない。
-3. `native-host/install.bat` をダブルクリックで実行
+`install.bat` を実行すると、拡張 ID プロンプト → manifest.json 自動書換 → 全ブラウザレジストリ登録までを 1 操作で行います。
+
+1. **拡張機能 ID を取得**
+   - 拡張オプション画面 (`brave://extensions` → Drive to Explorer の「詳細」→ 「拡張機能のオプション」、または拡張アイコン右クリック→「オプション」) に表示される **拡張機能 ID** の「ID をコピー」を押下
+   - もしくは `brave://extensions` (デベロッパーモード ON) からもコピー可能
+2. `native-host/install.bat` をダブルクリック
+3. プロンプトで **`Extension ID:`** と聞かれたら、コピーした ID を貼り付け → Enter
+   - 内部で manifest.json の `allowed_origins` を自動置換
    - Chrome / Edge / Brave / Vivaldi / Chromium の HKCU レジストリに登録
-   - 成功すると `Done. Restart your browser to take effect.` と表示
+   - 成功すると `[OK] manifest.json を更新しました` と各ブラウザ毎の登録結果が出る
 4. **ブラウザを完全終了** → 再起動
    - タスクマネージャーで `<browser>.exe` プロセスが残っていないか確認
+
+> **コマンドライン引数も可**: `install.bat <extension_id>` のように直接渡せます。プロンプトが省略されます。
 
 ### 3. ローカルルートパスを設定
 

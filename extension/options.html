@@ -45,6 +45,29 @@
 
   <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
 
+  <h1 style="font-size: 16px;">Native Host インストール補助</h1>
+  <p class="muted">
+    この拡張機能 ID を <code>native-host\install.bat</code> 起動時に貼り付けてください。<br>
+    install.bat が manifest.json を自動更新し、各ブラウザのレジストリに登録します。
+  </p>
+
+  <table>
+    <tr>
+      <td style="width: 200px"><label for="extensionId">拡張機能 ID</label></td>
+      <td>
+        <input type="text" id="extensionId" readonly>
+      </td>
+    </tr>
+  </table>
+
+  <div class="actions">
+    <button id="copyIdBtn">ID をコピー</button>
+  </div>
+
+  <div class="status" id="installStatus"></div>
+
+  <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
+
   <h1 style="font-size: 16px;">Drive REST API (OAuth) — 任意・推奨</h1>
   <p class="muted">
     OAuth Client ID を登録すると、DOM 解析より遥かに信頼性の高い API 経由で Drive 階層を解決します。<br>
