@@ -250,6 +250,25 @@ stdin に 4byte little-endian 長 + JSON、stdout に同形式（Chromium Native
 
 ---
 
+## リリース
+
+`v*` パターンのタグを push すると、GitHub Actions が自動で：
+
+1. `windows-latest` ランナー上で PyInstaller を使い `drive_to_explorer_host.exe` をビルド
+2. `extension/` + `native-host/`（exe 入り）+ `shell-integration/` + `README.md` を一括 zip 化
+3. Release を作成し zip をアセット添付（`gh release create --generate-notes`）
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+タグ push 後 1〜2 分で `https://github.com/hakuseiyato/drive-to-explorer/releases` に zip が現れる。配布先には zip を渡すだけで Python 不要モードで動作する。
+
+手動再生成は GitHub Actions UI の `Release` ワークフローを `workflow_dispatch` で起動。
+
+---
+
 ## ライセンス
 
 本リポジトリは個人/社内利用を想定したカスタムツールです。改変・再配布は自由ですが、保証はありません。

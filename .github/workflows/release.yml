@@ -1,0 +1,125 @@
+name: Release
+
+# タグ push (v*) で自動的に Release を作成し、ビルド済み .exe を含む
+# 配布用 zip を Release アセットとして添付する。
+#
+# 利用方法:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# 手動実行 (既存タグに対して再生成):
+#   GitHub Actions UI から workflow_dispatch を叩く
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing tag to release (e.g. v0.2.0)'
+        required: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Build native host exe
+        shell: pwsh
+        working-directory: native-host
+        run: |
+          pyinstaller `
+            --onefile `
+            --noconsole `
+            --distpath . `
+            --workpath build `
+            --specpath build `
+            --name drive_to_explorer_host `
+            drive_to_explorer_host.py
+          Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+          if (-not (Test-Path drive_to_explorer_host.exe)) {
+            Write-Error "exe not produced"
+            exit 1
+          }
+          Get-Item drive_to_explorer_host.exe | Select-Object Name, Length
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $v = '${{ github.event.inputs.version }}'
+          } else {
+            $v = $env:GITHUB_REF -replace 'refs/tags/', ''
+          }
+          if (-not $v) {
+            Write-Error "version 解決失敗"
+            exit 1
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "version=$v"
+
+      - name: Build release package (zip)
+        shell: pwsh
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          $name = "drive-to-explorer-$v"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+          Copy-Item -Recurse extension          (Join-Path $stage 'extension')
+          Copy-Item -Recurse native-host        (Join-Path $stage 'native-host')
+          Copy-Item -Recurse shell-integration  (Join-Path $stage 'shell-integration')
+          Copy-Item README.md                   $stage
+
+          # __pycache__ などビルド残滓を念のため除去
+          Get-ChildItem -Recurse -Force $stage -Directory `
+            | Where-Object { $_.Name -in @('__pycache__','build','dist') } `
+            | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Recurse -Force $stage -File `
+            | Where-Object { $_.Extension -in @('.pyc','.spec') } `
+            | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          $zip = "$name.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path $stage -DestinationPath $zip -Force
+
+          Get-Item $zip | Select-Object Name, Length
+          "asset=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: pkg
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $v   = '${{ steps.ver.outputs.version }}'
+          $zip = '${{ steps.pkg.outputs.asset }}'
+
+          $existing = gh release view $v 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $v は既存。アセットを上書きアップロード。"
+            gh release upload $v $zip --clobber
+          } else {
+            Write-Host "Release $v を新規作成"
+            gh release create $v $zip `
+              --title "Drive to Explorer $v" `
+              --generate-notes
+          }
