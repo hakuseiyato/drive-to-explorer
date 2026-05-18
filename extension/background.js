@@ -163,42 +163,59 @@ async function runOpen(target) {
   };
   const action = target.kind === "file" ? "select" : "open";
 
-  // 存在する候補を探す
-  let foundPath = null;
+  // 候補のうちファイル/フォルダ本体パスと親フォルダパスを 1 リクエストで一括チェック
+  const triedPaths = baseCandidates.map(buildFinal);
+  const parentCheckPaths = action === "select" ? baseCandidates : [];
+  const allPaths = [...triedPaths, ...parentCheckPaths];
+
+  const existsMany = await sendToHost({ action: "exists_many", paths: allPaths });
   const hostErrors = [];
-  const triedPaths = [];
-  for (const base of baseCandidates) {
-    const candidate = buildFinal(base);
-    triedPaths.push(candidate);
-    const existResp = await sendToHost({ action: "exists", path: candidate });
-    if (!existResp || !existResp.ok) {
-      const err = (existResp && existResp.error) || "通信失敗";
-      hostErrors.push(`${candidate}: ${err}`);
-      // Native Host 未登録などの致命的エラーは即座に中断
-      if (isHostMissingError(err)) {
-        const help = hostMissingHelp();
-        notify("Native Host 未登録", help);
-        return { ok: false, error: help };
-      }
-      continue;
+  let foundPath = null;
+  let fallbackParent = null;
+  if (!existsMany || !existsMany.ok) {
+    const err = (existsMany && existsMany.error) || "通信失敗";
+    if (isHostMissingError(err)) {
+      const help = hostMissingHelp();
+      notify("Native Host 未登録", help);
+      return { ok: false, error: help };
     }
-    if (existResp.exists) {
-      foundPath = candidate;
-      break;
+    hostErrors.push(`exists_many: ${err}`);
+  } else {
+    const results = existsMany.results || [];
+    const lookup = new Map(results.map((r) => [r.path, r]));
+    // 1. ファイル/フォルダ本体パスを優先
+    for (const p of triedPaths) {
+      const r = lookup.get(p);
+      if (r && r.exists) {
+        foundPath = p;
+        break;
+      }
+      if (r && r.error) hostErrors.push(`${p}: ${r.error}`);
+    }
+    // 2. file 選択で本体が無い場合の親フォルダ
+    if (!foundPath && action === "select") {
+      for (const base of parentCheckPaths) {
+        const r = lookup.get(base);
+        if (r && r.exists) {
+          fallbackParent = base;
+          break;
+        }
+      }
     }
   }
 
-  // file 選択でファイル本体が無い場合は親フォルダで再試行
-  if (!foundPath && action === "select") {
-    for (const base of baseCandidates) {
-      const r = await sendToHost({ action: "exists", path: base });
-      if (r && r.ok && r.exists) {
-        const open = await sendToHost({ action: "open", path: base });
-        if (open.ok) return { ok: true, path: base };
-        notify("起動失敗", open.error || "");
-        return { ok: false, error: open.error || "起動失敗" };
-      }
+  // 親フォルダフォールバック起動
+  if (!foundPath && fallbackParent) {
+    const open = await sendToHost({ action: "open", path: fallbackParent });
+    if (open.ok) {
+      notify(
+        "親フォルダを開きました",
+        "ローカルにファイル本体が見つからなかったため、親フォルダを開きました:\n" + fallbackParent
+      );
+      return { ok: true, path: fallbackParent, fallback: "parent" };
     }
+    notify("起動失敗", open.error || "");
+    return { ok: false, error: open.error || "起動失敗" };
   }
 
   if (!foundPath) {
@@ -379,28 +396,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (target.kind === "file" && target.name) return base + "\\" + target.name;
           return base;
         };
-        // 存在するものを優先
-        for (const base of baseCandidates) {
-          const candidate = buildFinal(base);
-          const r = await sendToHost({ action: "exists", path: candidate });
-          if (r && r.ok && r.exists) {
-            sendResponse({ ok: true, path: candidate });
+        const candidates = baseCandidates.map(buildFinal);
+        const r = await sendToHost({ action: "exists_many", paths: candidates });
+        if (r && r.ok && r.results) {
+          const hit = r.results.find((x) => x.exists);
+          if (hit) {
+            sendResponse({ ok: true, path: hit.path });
             return;
           }
+        } else if (r && !r.ok && isHostMissingError(r.error)) {
           // host 未登録などの致命的エラー: 通信せず候補だけ返す
-          if (r && !r.ok && isHostMissingError(r.error)) {
-            sendResponse({
-              ok: true,
-              path: candidate,
-              warning: "Native Host 未登録のため存在確認はスキップ",
-            });
-            return;
-          }
+          sendResponse({
+            ok: true,
+            path: candidates[0],
+            warning: "Native Host 未登録のため存在確認はスキップ",
+          });
+          return;
         }
         // どれも存在しなかった: 1 番目の候補を warning 付きで返す
         sendResponse({
           ok: true,
-          path: buildFinal(baseCandidates[0]),
+          path: candidates[0],
           warning: "存在確認できませんでした",
         });
         return;
@@ -484,23 +500,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           : null;
         const breadcrumbs = info ? info.breadcrumbs : [];
         const localRoot = await getLocalRoot();
-        // 候補のうち最初に存在するものを表示する
+        // 候補のうち最初に存在するものを表示する (1 リクエストで一括チェック)
         let localPath = null;
         if (localRoot && breadcrumbs && breadcrumbs.length) {
           const candidates = buildLocalPathCandidates(breadcrumbs, localRoot);
-          for (const c of candidates) {
-            const r = await sendToHost({ action: "exists", path: c });
-            if (r && r.ok && r.exists) {
-              localPath = c;
-              break;
-            }
-            // host エラー時は最初の候補を表示用に使う
-            if (r && !r.ok && isHostMissingError(r.error)) {
-              localPath = c;
-              break;
-            }
+          const r = await sendToHost({ action: "exists_many", paths: candidates });
+          if (r && r.ok && r.results) {
+            const hit = r.results.find((x) => x.exists);
+            localPath = hit ? hit.path : candidates[0];
+          } else if (r && !r.ok && isHostMissingError(r.error)) {
+            localPath = candidates[0];
+          } else {
+            localPath = candidates[0];
           }
-          if (!localPath) localPath = candidates[0];
         }
         sendResponse({ ok: true, breadcrumbs, localPath, localRoot });
         return;

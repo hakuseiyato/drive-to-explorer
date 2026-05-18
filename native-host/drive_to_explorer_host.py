@@ -6,15 +6,22 @@
   stdin/stdout で 4byte little-endian length + UTF-8 JSON 本文。
 
 リクエスト例:
-  {"action": "open",   "path": "M:\\案件\\ISJ_2605\\Live"}
-  {"action": "exists", "path": "M:\\..."}
+  {"action": "open",        "path": "M:\\案件\\ISJ_2605\\Live"}
+  {"action": "select",      "path": "M:\\..."}
+  {"action": "exists",      "path": "M:\\..."}
+  {"action": "exists_many", "paths": ["M:\\a", "M:\\b", ...]}
+  {"action": "ping"}
 
 レスポンス例:
   {"ok": true}
+  {"ok": true, "exists": true}
+  {"ok": true, "results": [{"path": "M:\\a", "exists": true}, ...]}
   {"ok": false, "error": "..."}
 """
 
 import json
+import logging
+import logging.handlers
 import os
 import re
 import struct
@@ -22,7 +29,6 @@ import subprocess
 import sys
 import tempfile
 import traceback
-from datetime import datetime
 
 LOG_PATH = os.path.join(tempfile.gettempdir(), "drive_to_explorer_host.log")
 
@@ -30,10 +36,32 @@ LOG_PATH = os.path.join(tempfile.gettempdir(), "drive_to_explorer_host.log")
 _PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
+def _build_logger() -> logging.Logger:
+    """1MB × 3 世代でローテートするロガー。"""
+    logger = logging.getLogger("dte_host")
+    if logger.handlers:
+        return logger
+    logger.setLevel(logging.INFO)
+    try:
+        handler = logging.handlers.RotatingFileHandler(
+            LOG_PATH, maxBytes=1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        handler.setFormatter(
+            logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+        )
+        logger.addHandler(handler)
+    except Exception:
+        # ログ書き込みに失敗してもホスト動作は継続させる
+        pass
+    return logger
+
+
+_LOG = _build_logger()
+
+
 def log(msg: str) -> None:
     try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {msg}\n")
+        _LOG.info(msg)
     except Exception:
         pass
 
@@ -73,6 +101,20 @@ def handle(req: dict) -> dict:
     if action == "ping":
         return {"ok": True, "pong": True}
 
+    if action == "exists_many":
+        # 複数パスの存在を 1 リクエストで一括チェック (IPC 往復削減)
+        paths = req.get("paths") or []
+        if not isinstance(paths, list):
+            return {"ok": False, "error": "paths must be an array"}
+        results = []
+        for p in paths:
+            try:
+                np = validate_path(p)
+                results.append({"path": np, "exists": os.path.exists(np)})
+            except Exception as e:
+                results.append({"path": p, "exists": False, "error": str(e)})
+        return {"ok": True, "results": results}
+
     path = validate_path(req.get("path", ""))
 
     if action == "exists":
@@ -88,7 +130,8 @@ def handle(req: dict) -> dict:
         # ファイルを選択状態でエクスプローラーを開く。
         # ファイル本体が存在しなければ親フォルダを開くフォールバック。
         if os.path.exists(path):
-            subprocess.Popen(f'explorer.exe /select,"{path}"', close_fds=True)
+            # 配列形式で /select, とパスを渡す (open との一貫性、shell 文字列形式廃止)
+            subprocess.Popen(["explorer.exe", "/select,", path], close_fds=True)
             return {"ok": True}
         parent = os.path.dirname(path)
         if os.path.exists(parent):
