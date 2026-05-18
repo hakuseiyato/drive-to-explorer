@@ -346,14 +346,20 @@ updateBadge();
 
 // ---- コンテキストメニュー --------------------------------------------
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: CONTEXT_MENU_ID,
-    title: "エクスプローラーで開く",
-    contexts: ["page", "selection", "link"],
-    documentUrlPatterns: ["https://drive.google.com/*"],
+function registerContextMenu() {
+  // onInstalled は更新時にも発火するため、removeAll で二重登録を防ぐ
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_ID,
+      title: "エクスプローラーで開く",
+      contexts: ["page", "selection", "link"],
+      documentUrlPatterns: ["https://drive.google.com/*"],
+    });
   });
-});
+}
+
+chrome.runtime.onInstalled.addListener(registerContextMenu);
+chrome.runtime.onStartup.addListener(registerContextMenu);
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === CONTEXT_MENU_ID) {
