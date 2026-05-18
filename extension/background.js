@@ -37,16 +37,6 @@ async function getLocalRoot() {
 
 // ---- パス構築 ----------------------------------------------------------
 
-function buildLocalPath(breadcrumbs, localRoot) {
-  if (!localRoot) return null;
-  const root = localRoot.replace(/[\\/]+$/, "");
-  const parts = (breadcrumbs || [])
-    .map((s) => (s || "").trim())
-    .filter((s) => s.length > 0);
-  if (parts.length === 0) return root;
-  return root + "\\" + parts.join("\\");
-}
-
 // Drive for Desktop の典型的なディレクトリ構造を試行する候補リスト
 // 共有ドライブは「共有ドライブ\」、My Drive は「マイドライブ\」配下にミラーされる
 function buildLocalPathCandidates(breadcrumbs, localRoot) {
@@ -175,16 +165,17 @@ async function runOpen(target) {
 
   // 存在する候補を探す
   let foundPath = null;
-  let firstHostError = null;
+  const hostErrors = [];
   const triedPaths = [];
   for (const base of baseCandidates) {
     const candidate = buildFinal(base);
     triedPaths.push(candidate);
     const existResp = await sendToHost({ action: "exists", path: candidate });
     if (!existResp || !existResp.ok) {
-      firstHostError = (existResp && existResp.error) || "通信失敗";
+      const err = (existResp && existResp.error) || "通信失敗";
+      hostErrors.push(`${candidate}: ${err}`);
       // Native Host 未登録などの致命的エラーは即座に中断
-      if (isHostMissingError(firstHostError)) {
+      if (isHostMissingError(err)) {
         const help = hostMissingHelp();
         notify("Native Host 未登録", help);
         return { ok: false, error: help };
@@ -211,13 +202,16 @@ async function runOpen(target) {
   }
 
   if (!foundPath) {
-    if (firstHostError && !triedPaths.length) {
-      notify("ホストエラー", firstHostError);
-      return { ok: false, error: "ホストエラー: " + firstHostError };
+    // ホストエラーが全候補で発生していたら原因はホスト側
+    if (hostErrors.length && hostErrors.length === triedPaths.length) {
+      const detail = hostErrors.join("\n");
+      notify("ホストエラー", detail);
+      return { ok: false, error: "ホストエラー:\n" + detail };
     }
     const msg =
       "ローカルパスが見つかりません。試したパス:\n" +
       triedPaths.map((p) => "  " + p).join("\n") +
+      (hostErrors.length ? "\n\nホストエラー:\n" + hostErrors.join("\n") : "") +
       "\n\nオプション画面でローカルルートを確認してください。" +
       "\n例: I:\\ や I:\\共有ドライブ\\ など。";
     notify("見つかりません", msg);
@@ -245,8 +239,9 @@ function notify(title, message) {
       title,
       message: String(message).slice(0, 500),
     });
-  } catch (_) {
-    // notifications 権限がないなど
+  } catch (e) {
+    // notifications 権限が無い等で失敗した場合も最低限ログには残す
+    console.warn("[DTE] notify failed:", title, e);
   }
 }
 

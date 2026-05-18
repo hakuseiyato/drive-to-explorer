@@ -383,17 +383,17 @@
     return arr;
   }
 
-  // document.title から推定 (「<current> - <root> - Google ドライブ」形式)
+  // document.title から推定
+  // Drive の title は通常「<current> - Google ドライブ」形式で階層情報を含まないため、
+  // 単一セグメントを「現在フォルダ名」として控えめに採用する。
+  // (旧実装の parts.reverse() は「現在 - 親 - root」前提だったが Drive の実出力と
+  //  一致せず、誤った順序のパンくずを返す原因になっていたので撤廃)
   function extractBreadcrumbsByTitle() {
     const m = document.title && document.title.match(/^(.+?)\s*[-–]\s*Google/i);
     if (!m || !m[1]) return [];
     const head = m[1].trim();
-    // 「TD - 2605_ISJ_ZeppHaneda」のように " - " で区切られている場合は逆順 (root → current)
-    const parts = head.split(/\s+[-–]\s+/).map((s) => s.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      return parts.reverse(); // 最後が現在フォルダ
-    }
-    return parts.length === 1 ? [parts[0]] : [];
+    if (!head || head.length > 200) return [];
+    return [head];
   }
 
   function extractBreadcrumbs() {
