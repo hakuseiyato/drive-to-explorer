@@ -2,7 +2,8 @@ const $ = (id) => document.getElementById(id);
 const status = $("status");
 
 async function load() {
-  const { localRoot = "M:\\" } = await chrome.storage.sync.get("localRoot");
+  // デフォルト値は持たない (環境固有のドライブレターをコードから除去)
+  const { localRoot = "" } = await chrome.storage.sync.get("localRoot");
   $("localRoot").value = localRoot;
 }
 

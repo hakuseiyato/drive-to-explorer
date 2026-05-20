@@ -107,10 +107,6 @@
     if (/^[…\.\s]+$/.test(t)) return false;       // 「…」「...」のみ
     if (/^[\d\s,.]+$/.test(t)) return false;      // 数字・カンマのみ (通知バッジ)
     if (t.length === 1 && !/[\p{L}\p{N}]/u.test(t)) return false;
-    // Drive UI ラベルを除外
-    const uiLabels = [
-      "マイドライブ", "My Drive",  // ←これは breadcrumb の正当な要素なので含める方針
-    ];
     return true;
   }
 
