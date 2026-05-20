@@ -58,22 +58,19 @@ drive-to-explorer/
    - Vivaldi: `vivaldi://extensions`
 2. 右上の **「デベロッパーモード」を ON**
 3. **「パッケージ化されていない拡張機能を読み込む」** → このリポジトリの `extension/` フォルダを選択
-4. 表示された **拡張機能 ID** をコピー（例: `oabcdefghijklmnop1234567890abcdef`）
-
-> **注意**: Unpacked load した拡張は、フォルダのパスやマシンによって ID が変わります。別マシンに配布する場合は再度 ID を控えて Step 2 の作業を行ってください。
+4. 表示される **拡張機能 ID** は **`pkiecgchhhhcgnjjgofmlfobbhacdcge`** に固定されます
+   - v0.2.0+ で `manifest.key` により ID が固定化されているため、別 PC でロードしても同じ ID になります
+   - 配布パッケージや GCP の OAuth 設定が「1回だけ」で全マシンに通用
 
 ### 2. Native Host を登録
 
-`install.bat` を実行すると、拡張 ID プロンプト → manifest.json 自動書換 → 全ブラウザレジストリ登録までを 1 操作で行います。
+`install.bat` を実行すると、manifest.json の `allowed_origins` 確認 → 全ブラウザレジストリ登録までを行います。
 
-1. **拡張機能 ID を取得**
-   - 拡張オプション画面 (`brave://extensions` → Drive to Explorer の「詳細」→ 「拡張機能のオプション」、または拡張アイコン右クリック→「オプション」) に表示される **拡張機能 ID** の「ID をコピー」を押下
-   - もしくは `brave://extensions` (デベロッパーモード ON) からもコピー可能
-2. `native-host/install.bat` をダブルクリック
-3. プロンプトで **`Extension ID:`** と聞かれたら、コピーした ID を貼り付け → Enter
-   - 内部で manifest.json の `allowed_origins` を自動置換
-   - Chrome / Edge / Brave / Vivaldi / Chromium の HKCU レジストリに登録
-   - 成功すると `[OK] manifest.json を更新しました` と各ブラウザ毎の登録結果が出る
+1. `native-host/install.bat` をダブルクリック
+2. プロンプトで `Extension ID:` と聞かれます
+   - v0.2.0+ では拡張機能 ID `pkiecgchhhhcgnjjgofmlfobbhacdcge` が既定値として表示されるので **Enter キーだけで承認**
+   - 別 ID で登録したい場合のみ入力
+3. Chrome / Edge / Brave / Vivaldi / Chromium の HKCU レジストリに自動登録
 4. **ブラウザを完全終了** → 再起動
    - タスクマネージャーで `<browser>.exe` プロセスが残っていないか確認
 
@@ -93,6 +90,11 @@ drive-to-explorer/
 
 DOM 解析の脆さ (Drive UI 変更で壊れるリスク) を回避し、API 経由で堅牢にパスを解決します。
 設定後は「パスを表示」popup フラッシュも不要になります。
+**ファイル単体 URL** (`/file/d/<id>/view`) からの起動もこれを設定すれば完全対応します。
+
+> **詳細なステップバイステップガイド**: [docs/GCP_SETUP.md](docs/GCP_SETUP.md)
+>
+> 所要時間 5 分、完全無料、Yato さんが1回だけ作業すれば全配布先で同一クライアント ID が使えます (v0.2.0+ で拡張機能 ID 固定化済み)。
 
 #### 簡単セットアップ (推奨): セットアップウィザード
 
