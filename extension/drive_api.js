@@ -113,17 +113,37 @@ const DTE_API = (() => {
     await clearPathCache();
   }
 
+  // 429 / 5xx は指数バックオフでリトライ (最大 2 回)
   async function apiGet(url, token) {
-    const r = await fetch(url, {
-      headers: { Authorization: "Bearer " + token },
-    });
-    if (!r.ok) {
+    const MAX_ATTEMPTS = 3;
+    const BACKOFF_MS = [200, 600]; // 1回目失敗後 200ms, 2回目失敗後 600ms
+    let lastErr = null;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      let r;
+      try {
+        r = await fetch(url, {
+          headers: { Authorization: "Bearer " + token },
+        });
+      } catch (e) {
+        // ネットワークエラー (オフライン等) もリトライ対象
+        lastErr = new Error("Drive API fetch failed: " + e.message);
+        lastErr.status = 0;
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((res) => setTimeout(res, BACKOFF_MS[attempt]));
+          continue;
+        }
+        throw lastErr;
+      }
+      if (r.ok) return r.json();
+      const isTransient = r.status === 429 || (r.status >= 500 && r.status < 600);
       const text = await r.text().catch(() => "");
       const err = new Error("Drive API " + r.status + ": " + text.slice(0, 200));
       err.status = r.status;
-      throw err;
+      if (!isTransient || attempt === MAX_ATTEMPTS - 1) throw err;
+      lastErr = err;
+      await new Promise((res) => setTimeout(res, BACKOFF_MS[attempt]));
     }
-    return r.json();
+    throw lastErr || new Error("Drive API: unknown error after retries");
   }
 
   async function getFile(id, token) {
@@ -160,6 +180,9 @@ const DTE_API = (() => {
     } catch (e) {
       if (e.code === "NO_CLIENT_ID") throw e;
       // 非対話で取れない場合は対話モード
+      // ネットワークエラーで対話に流すのは避けたいが、
+      // chrome.identity.launchWebAuthFlow 自体は内部接続性に依存しないため、
+      // ここで interactive に切り替えるのは「キャッシュ無し / 期限切れ」と等価
       token = await getAuthToken(true);
     }
 
@@ -181,6 +204,7 @@ const DTE_API = (() => {
         parent = await getFile(parentId, token);
       } catch (e) {
         // 権限が無い等で取れない場合は中断 (取れたところまで返す)
+        console.warn("[DTE/API] 祖先取得中断 parentId=" + parentId + ": " + e.message);
         break;
       }
       // 共有ドライブのトップに到達したら停止 (driveId === parent.id のケース)
@@ -192,6 +216,12 @@ const DTE_API = (() => {
       }
       path.unshift(parent.name);
       parentId = parent.parents && parent.parents[0];
+    }
+    if (parentId && safety <= 0) {
+      console.warn(
+        "[DTE/API] 祖先階層が 50 段を超過しました。途中で打ち切ります: " +
+          path.slice(0, 3).join("/") + "..."
+      );
     }
 
     // 共有ドライブ名を先頭に
