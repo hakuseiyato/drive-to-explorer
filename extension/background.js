@@ -399,6 +399,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
+// ---- キーボードショートカット --------------------------------------------
+// デフォルト未割当。chrome://extensions/shortcuts で割当 (例: Ctrl+Shift+E)
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener(async (cmd) => {
+    if (cmd !== "open-current-folder") return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && /^https:\/\/drive\.google\.com\//.test(tab.url || "")) {
+      openCurrentFolder(tab);
+    }
+  });
+}
+
 // ---- popup / options / content からのメッセージ ----------------------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
