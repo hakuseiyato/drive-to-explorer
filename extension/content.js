@@ -311,9 +311,11 @@
       return null;
     }
 
-    // クリック前に既存ノードを記録 (差分検出用)
+    // クリック前に「既存の popup 候補」のみ記録 (body 全要素走査を避ける)
+    const POPUP_SELECTOR =
+      '[role="menu"], [role="dialog"], [role="tooltip"], [role="listbox"], [role="tree"]';
     const before = new WeakSet();
-    document.querySelectorAll("body *").forEach((el) => before.add(el));
+    document.querySelectorAll(POPUP_SELECTOR).forEach((el) => before.add(el));
 
     realClick(showBtn);
 
@@ -325,9 +327,7 @@
       // 戦略: 新規追加された要素の中で、最も多くの breadcrumb 候補テキストを含むもの
       let bestEl = null;
       let bestCount = 0;
-      const newEls = document.querySelectorAll(
-        '[role="menu"], [role="dialog"], [role="tooltip"], [role="listbox"], [role="tree"]'
-      );
+      const newEls = document.querySelectorAll(POPUP_SELECTOR);
       newEls.forEach((el) => {
         if (before.has(el)) return;
         const r = el.getBoundingClientRect();
