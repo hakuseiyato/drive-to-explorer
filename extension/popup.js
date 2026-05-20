@@ -55,8 +55,15 @@ async function refresh() {
   $("localPath").textContent = resp.localPath || "―";
   $("openBtn").disabled = false;
   $("copyBtn").disabled = false;
-  status.innerHTML =
-    '<span class="muted">クリック時に完全パスを取得します。</span>';
+  if (resp.isFile) {
+    $("openBtn").textContent = "エクスプローラーで開く（ファイル選択）";
+    status.innerHTML =
+      '<span class="muted">ファイル単体URLです。ローカルに同名ファイルがあれば選択、無ければ親フォルダを開きます。</span>';
+  } else {
+    $("openBtn").textContent = "エクスプローラーで開く";
+    status.innerHTML =
+      '<span class="muted">クリック時に完全パスを取得します。</span>';
+  }
 }
 
 $("openBtn").addEventListener("click", async () => {
@@ -69,28 +76,30 @@ $("openBtn").addEventListener("click", async () => {
   if (full && full.breadcrumbs && full.breadcrumbs.length) {
     $("breadcrumbs").textContent = full.breadcrumbs.join(" / ");
     status.textContent = "起動中…";
-    const resp = await chrome.runtime.sendMessage({
+    const openResp = await chrome.runtime.sendMessage({
       type: "openTargetWithBreadcrumbs",
       breadcrumbs: full.breadcrumbs,
+      driveRef: full.driveRef || null,
+      fileName: full.fileName || null,
     });
-    if (resp && resp.ok) {
+    if (openResp && openResp.ok) {
       window.close();
       return;
     }
     $("openBtn").disabled = false;
-    const err = (resp && resp.error) || "不明なエラー";
+    const err = (openResp && openResp.error) || "不明なエラー";
     status.innerHTML = `<span class="err">起動失敗: ${err}</span>`;
     return;
   }
 
   // フォールバック: パス取得失敗 → 現状の breadcrumb で開く
-  const resp = await chrome.runtime.sendMessage({ type: "openCurrentFolder" });
-  if (resp && resp.ok) {
+  const fallbackResp = await chrome.runtime.sendMessage({ type: "openCurrentFolder" });
+  if (fallbackResp && fallbackResp.ok) {
     window.close();
     return;
   }
   $("openBtn").disabled = false;
-  const err = (resp && resp.error) || "不明なエラー";
+  const err = (fallbackResp && fallbackResp.error) || "不明なエラー";
   status.innerHTML = `<span class="err">起動失敗: ${err}<br>右クリックメニューからの起動もお試しください。</span>`;
 });
 
@@ -117,10 +126,19 @@ $("copyBtn").addEventListener("click", async () => {
   }
   $("breadcrumbs").textContent = breadcrumbs.join(" / ");
 
-  const resp = await chrome.runtime.sendMessage({
-    type: "resolveTargetPath",
-    target: { kind: "current", breadcrumbs },
-  });
+  // ファイル単体URLの場合は kind:'file' でパス解決させる
+  const isFile = !!(full && full.driveRef && full.driveRef.type === "file");
+  const target = isFile
+    ? {
+        kind: "file",
+        name: full.fileName,
+        breadcrumbs: breadcrumbs[breadcrumbs.length - 1] === full.fileName
+          ? breadcrumbs.slice(0, -1)
+          : breadcrumbs,
+      }
+    : { kind: "current", breadcrumbs };
+
+  const resp = await chrome.runtime.sendMessage({ type: "resolveTargetPath", target });
   if (!resp || !resp.ok || !resp.path) {
     $("copyBtn").disabled = false;
     status.innerHTML = `<span class="err">パス解決失敗: ${(resp && resp.error) || ""}</span>`;

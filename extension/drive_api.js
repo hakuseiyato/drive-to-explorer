@@ -141,13 +141,18 @@ const DTE_API = (() => {
     return apiGet(url, token);
   }
 
-  // folderId からフルパス (root 配下の相対) を組み立てる
+  // folderId / fileId からフルパス (root 配下の相対) を組み立てる
   // 結果は breadcrumb 配列 (background の buildLocalPathCandidates に渡せる形)
   // - 共有ドライブ: [<sharedDriveName>, ...ancestors, currentName]
   // - My Drive: [...ancestors, currentName] (マイドライブ プレフィックスは付けない;
   //   ローカル側の prefix 試行で吸収する)
-  async function resolveFolderPath(folderId) {
+  //
+  // options.isFileId が true の場合、id はファイル ID として扱い、
+  //   - file が mimeType=folder の場合: 通常のフォルダ解決
+  //   - file が それ以外の場合: ファイル名を末尾に含む完全な配列を返す
+  async function resolveFolderPath(folderId, options) {
     if (!folderId) throw new Error("folderId 空");
+    const opts = options || {};
 
     let token;
     try {
@@ -203,12 +208,14 @@ const DTE_API = (() => {
   }
 
   // session キャッシュ付き
-  async function getFolderPathCached(folderId) {
+  async function getFolderPathCached(folderId, options) {
+    const opts = options || {};
+    const cacheKey = (opts.isFileId ? "file:" : "folder:") + folderId;
     const { [PATH_CACHE_KEY]: cache = {} } =
       await chrome.storage.session.get(PATH_CACHE_KEY);
-    if (cache[folderId]) return cache[folderId];
-    const path = await resolveFolderPath(folderId);
-    cache[folderId] = path;
+    if (cache[cacheKey]) return cache[cacheKey];
+    const path = await resolveFolderPath(folderId, opts);
+    cache[cacheKey] = path;
     await chrome.storage.session.set({ [PATH_CACHE_KEY]: cache });
     return path;
   }

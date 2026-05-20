@@ -117,7 +117,38 @@ async function openCurrentFolder(tab) {
   }
   // 実際にパスを開く時は完全な breadcrumb (パスを表示 popup 経由) を取る
   const info = await getCurrentBreadcrumbs(tab.id, true);
-  if (!info || !info.breadcrumbs || info.breadcrumbs.length === 0) {
+  if (!info) {
+    const msg = "Drive のフォルダ階層を取得できませんでした。";
+    notify("エラー", msg);
+    return { ok: false, error: msg };
+  }
+
+  // ファイル単体 URL (/file/d/<id>/view) の場合は kind:'file' で runOpen に流す
+  // breadcrumbs は API 経由で [...親階層, ファイル名] が返る前提
+  // (DOM フォールバック時はファイル名のみ)
+  if (info.driveRef && info.driveRef.type === "file") {
+    const bc = info.breadcrumbs || [];
+    const fileName = info.fileName ||
+      (bc.length ? bc[bc.length - 1] : null);
+    if (!fileName) {
+      const msg =
+        "ファイル名を取得できませんでした。\n" +
+        "OAuth 未設定の場合はオプション画面で Drive API をセットアップしてください。";
+      notify("ファイル単体起動失敗", msg);
+      return { ok: false, error: msg };
+    }
+    // 末尾がファイル名と一致する場合は親階層として除外
+    const parentBc = bc.length && bc[bc.length - 1] === fileName
+      ? bc.slice(0, -1)
+      : bc;
+    return await runOpen({
+      kind: "file",
+      name: fileName,
+      breadcrumbs: parentBc,
+    });
+  }
+
+  if (!info.breadcrumbs || info.breadcrumbs.length === 0) {
     const msg = "Drive のフォルダ階層を取得できませんでした。";
     notify("エラー", msg);
     return { ok: false, error: msg };
@@ -139,7 +170,8 @@ async function openTarget(target) {
 
 async function runOpen(target) {
   const breadcrumbs = target.breadcrumbs || [];
-  if (breadcrumbs.length === 0) {
+  // file 指定なら親階層が空でもファイル名で root 配下を探す可能性があるので許容
+  if (breadcrumbs.length === 0 && target.kind !== "file") {
     const msg = "Drive のフォルダ階層を取得できませんでした。";
     notify("エラー", msg);
     return { ok: false, error: msg };
@@ -429,9 +461,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.type === "openTargetWithBreadcrumbs") {
         // popup から「完全な breadcrumb」が指定されて開く
+        // ファイル単体URLでは msg.driveRef.type === "file" + msg.fileName で受信
+        const isFile = msg.driveRef && msg.driveRef.type === "file";
+        const bc = msg.breadcrumbs || [];
+        if (isFile) {
+          const fileName = msg.fileName ||
+            (bc.length ? bc[bc.length - 1] : null);
+          const parentBc = bc.length && fileName && bc[bc.length - 1] === fileName
+            ? bc.slice(0, -1)
+            : bc;
+          const r = await runOpen({
+            kind: "file",
+            name: fileName,
+            breadcrumbs: parentBc,
+          });
+          sendResponse(r);
+          return;
+        }
         const r = await runOpen({
           kind: "current",
-          breadcrumbs: msg.breadcrumbs || [],
+          breadcrumbs: bc,
         });
         sendResponse(r);
         return;
@@ -439,7 +488,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // ---- Drive REST API (OAuth) -------------------------------------
       if (msg.type === "apiResolvePath") {
         try {
-          const path = await DTE_API.getFolderPathCached(msg.folderId);
+          const path = await DTE_API.getFolderPathCached(msg.folderId, {
+            isFileId: !!msg.isFileId,
+          });
           sendResponse({ ok: true, breadcrumbs: path });
         } catch (e) {
           sendResponse({
@@ -504,7 +555,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const info = tab && tab.id
           ? await getCurrentBreadcrumbs(tab.id, msg.quick ? false : true)
           : null;
-        const breadcrumbs = info ? info.breadcrumbs : [];
+        const breadcrumbs = info ? (info.breadcrumbs || []) : [];
+        const isFile = !!(info && info.driveRef && info.driveRef.type === "file");
+        const fileName = info && info.fileName || null;
         const localRoot = await getLocalRoot();
         // 候補のうち最初に存在するものを表示する (1 リクエストで一括チェック)
         let localPath = null;
@@ -520,7 +573,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             localPath = candidates[0];
           }
         }
-        sendResponse({ ok: true, breadcrumbs, localPath, localRoot });
+        sendResponse({ ok: true, breadcrumbs, localPath, localRoot, isFile, fileName });
         return;
       }
       if (msg.type === "hostRequest") {

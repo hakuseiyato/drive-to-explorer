@@ -161,6 +161,37 @@
     return m ? m[1] : null;
   }
 
+  // /folders/<id> / /file/d/<id> / ?id=<id> を網羅
+  // 戻り値: { type:'folder'|'file', id:string } | null
+  function getDriveRefFromUrl(urlString) {
+    const u = urlString || location.href;
+    let m;
+    if ((m = u.match(/\/file\/d\/([^/?#]+)/))) return { type: "file", id: m[1] };
+    if ((m = u.match(/\/folders\/([^/?#]+)/))) return { type: "folder", id: m[1] };
+    if ((m = u.match(/[?&]id=([^&#]+)/))) {
+      // open?id=... は folder/file 不明 (API で判別)
+      return { type: "folder", id: m[1] };
+    }
+    return null;
+  }
+
+  // ファイル単体プレビュー画面 (/file/d/<id>/view) でファイル名を取得
+  function getCurrentFileName() {
+    // 1. document.title 先頭 (「<filename> - Google ドライブ」)
+    const m = document.title && document.title.match(/^(.+?)\s*[-–]\s*Google/i);
+    if (m && m[1]) {
+      const head = m[1].trim();
+      if (head && head.length < 300 && !/^Google/i.test(head)) return head;
+    }
+    // 2. heading 要素フォールバック
+    const h = document.querySelector('[role="heading"]');
+    if (h) {
+      const t = textOf(h);
+      if (t && t.length < 300) return t;
+    }
+    return null;
+  }
+
   // breadcrumb バー上の「パスを表示」ボタンと「現在フォルダ」ボタンの間にある
   // 可視のフォルダ名要素を取得する。
   // (Drive UI は折り畳まれた祖先のみを popup に出し、可視部分の中間祖先はバー上に残す)
@@ -472,8 +503,56 @@
     });
   }
 
+  // ファイル単体URL (/file/d/<id>) では DOM パンくずが取れないため、
+  // API 経由でファイルの親フォルダを解決する。
+  async function getBreadcrumbsByApiForFile() {
+    const ref = getDriveRefFromUrl();
+    if (!ref || ref.type !== "file") return null;
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          { type: "apiResolvePath", folderId: ref.id, isFileId: true },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              dlog("apiResolvePath(file) lastError", chrome.runtime.lastError.message);
+              resolve(null);
+              return;
+            }
+            if (resp && resp.ok && resp.breadcrumbs && resp.breadcrumbs.length) {
+              resolve(resp.breadcrumbs);
+              return;
+            }
+            dlog("apiResolvePath(file) failed", resp);
+            resolve(null);
+          }
+        );
+      } catch (e) {
+        dlog("apiResolvePath(file) threw", e);
+        resolve(null);
+      }
+    });
+  }
+
   // 完全なパス取得 (メイン): API → 「パスを表示」popup → DOM の順に試行
+  // ファイル単体URLでは file ID から親フォルダ解決を試す
   async function getFullBreadcrumbs() {
+    const ref = getDriveRefFromUrl();
+    // ファイル単体URLは API 経由でしか解決できない
+    if (ref && ref.type === "file") {
+      try {
+        const api = await getBreadcrumbsByApiForFile();
+        if (api && api.length) {
+          dlog("getFullBreadcrumbs(file): via API", api);
+          return api;
+        }
+      } catch (e) {
+        dlog("API file path resolve threw", e);
+      }
+      // ファイル単体URLで API 解決失敗時のフォールバック: title からファイル名のみ返す
+      const name = getCurrentFileName();
+      return name ? [name] : [];
+    }
+
     // 1. Drive REST API (OAuth) - 設定済みなら最も信頼できる
     try {
       const api = await getBreadcrumbsByApi();
@@ -903,9 +982,12 @@
     let result = null;
     try {
       const bc = await getFullBreadcrumbs();
+      const driveRef = getDriveRefFromUrl();
       result = {
         breadcrumbs: bc || [],
         folderId: getFolderIdFromUrl(),
+        driveRef,
+        fileName: driveRef && driveRef.type === "file" ? getCurrentFileName() : null,
         url: location.href,
       };
     } catch (e) {
@@ -922,9 +1004,12 @@
     if (!msg) return;
     if (msg.type === "getBreadcrumbs") {
       try {
+        const driveRef = getDriveRefFromUrl();
         sendResponse({
           breadcrumbs: extractBreadcrumbs(),
           folderId: getFolderIdFromUrl(),
+          driveRef,
+          fileName: driveRef && driveRef.type === "file" ? getCurrentFileName() : null,
           url: location.href,
           title: document.title,
         });
@@ -937,9 +1022,12 @@
       (async () => {
         try {
           const full = await getFullBreadcrumbs();
+          const driveRef = getDriveRefFromUrl();
           sendResponse({
             breadcrumbs: full || [],
             folderId: getFolderIdFromUrl(),
+            driveRef,
+            fileName: driveRef && driveRef.type === "file" ? getCurrentFileName() : null,
             url: location.href,
             title: document.title,
           });
