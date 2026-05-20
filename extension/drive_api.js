@@ -279,20 +279,33 @@ const DTE_API = (() => {
   }
 
   // ローカルパス -> Drive folderId
-  // localRoot, 共有ドライブ/マイドライブ プレフィックスを順次剥がし、
+  // localRoots のいずれか、共有ドライブ/マイドライブ プレフィックスを順次剥がし、
   // 残りのセグメントを Drive 上で名前検索しながら辿る。
   async function findFolderIdByLocalPath(localPath) {
     if (!localPath) throw new Error("localPath 空");
 
-    const { localRoot = "" } = await chrome.storage.sync.get("localRoot");
+    // 新形式 localRoots と旧形式 localRoot の両方を読む
+    const obj = await chrome.storage.sync.get(["localRoots", "localRoot"]);
+    const roots = [];
+    if (Array.isArray(obj.localRoots)) {
+      for (const r of obj.localRoots) {
+        if (r && typeof r === "string") roots.push(r);
+      }
+    }
+    if (obj.localRoot && typeof obj.localRoot === "string") roots.push(obj.localRoot);
+
     let rel = String(localPath);
 
-    // localRoot を除去 (大文字小文字無視)
-    if (localRoot) {
-      const root = localRoot.replace(/[\\/]+$/, "");
+    // 最も長く一致する root を除去 (大文字小文字無視)
+    let matched = null;
+    for (const r of roots) {
+      const root = r.replace(/[\\/]+$/, "");
       if (rel.toLowerCase().startsWith(root.toLowerCase())) {
-        rel = rel.slice(root.length);
+        if (!matched || root.length > matched.length) matched = root;
       }
+    }
+    if (matched) {
+      rel = rel.slice(matched.length);
     }
     // ドライブレター単独 ("I:" 等) のフォールバック
     if (/^[A-Za-z]:/.test(rel)) rel = rel.slice(2);

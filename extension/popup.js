@@ -45,7 +45,8 @@ async function refresh() {
   }
   const bc = (resp.breadcrumbs || []).join(" / ") || "―";
   $("breadcrumbs").textContent = bc;
-  if (!resp.localRoot) {
+  const rootsCount = (resp.localRoots && resp.localRoots.length) || (resp.localRoot ? 1 : 0);
+  if (rootsCount === 0) {
     $("localPath").textContent = "―";
     $("openBtn").disabled = true;
     status.innerHTML =

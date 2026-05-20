@@ -30,33 +30,80 @@ function sendToHost(payload) {
 
 // ---- 設定読み込み ------------------------------------------------------
 
+// localRoots (新形式: array) と localRoot (旧形式: string) の両方を読んで
+// 統合した配列を返す。空文字や重複は除去。
+async function getLocalRoots() {
+  const obj = await chrome.storage.sync.get(["localRoots", "localRoot"]);
+  const arr = [];
+  if (Array.isArray(obj.localRoots)) {
+    for (const v of obj.localRoots) {
+      if (v && typeof v === "string") arr.push(v);
+    }
+  }
+  if (obj.localRoot && typeof obj.localRoot === "string") arr.push(obj.localRoot);
+  // 重複排除 (大文字小文字無視)
+  const seen = new Set();
+  const result = [];
+  for (const v of arr) {
+    const trimmed = v.trim();
+    if (!trimmed) continue;
+    const k = trimmed.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+// 後方互換用: 単一ルートを取得 (バッジ判定など)
 async function getLocalRoot() {
-  const { localRoot } = await chrome.storage.sync.get("localRoot");
-  return localRoot || "";
+  const roots = await getLocalRoots();
+  return roots[0] || "";
 }
 
 // ---- パス構築 ----------------------------------------------------------
 
 // Drive for Desktop の典型的なディレクトリ構造を試行する候補リスト
 // 共有ドライブは「共有ドライブ\」、My Drive は「マイドライブ\」配下にミラーされる
-function buildLocalPathCandidates(breadcrumbs, localRoot) {
-  if (!localRoot) return [];
-  const root = localRoot.replace(/[\\/]+$/, "");
+// 複数 root に対応 (配列または単一文字列を受け付ける)
+function buildLocalPathCandidates(breadcrumbs, localRootOrRoots) {
+  const roots = Array.isArray(localRootOrRoots)
+    ? localRootOrRoots
+    : (localRootOrRoots ? [localRootOrRoots] : []);
+  if (roots.length === 0) return [];
   const parts = (breadcrumbs || [])
     .map((s) => (s || "").trim())
     .filter((s) => s.length > 0);
   const sub = parts.join("\\");
-  if (!sub) return [root];
-  return [
-    // 1. ルート直下にそのまま (ユーザがすでに root を内側に設定済みのケース)
-    root + "\\" + sub,
-    // 2. 共有ドライブ配下
-    root + "\\共有ドライブ\\" + sub,
-    root + "\\Shared drives\\" + sub,
-    // 3. マイドライブ配下
-    root + "\\マイドライブ\\" + sub,
-    root + "\\My Drive\\" + sub,
-  ];
+
+  const candidates = [];
+  for (const r of roots) {
+    const root = String(r).replace(/[\\/]+$/, "");
+    if (!sub) {
+      candidates.push(root);
+      continue;
+    }
+    candidates.push(
+      // 1. ルート直下にそのまま
+      root + "\\" + sub,
+      // 2. 共有ドライブ配下
+      root + "\\共有ドライブ\\" + sub,
+      root + "\\Shared drives\\" + sub,
+      // 3. マイドライブ配下
+      root + "\\マイドライブ\\" + sub,
+      root + "\\My Drive\\" + sub
+    );
+  }
+  // 重複排除 (大文字小文字無視)
+  const seen = new Set();
+  const dedup = [];
+  for (const c of candidates) {
+    const k = c.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    dedup.push(c);
+  }
+  return dedup;
 }
 
 function isHostMissingError(err) {
@@ -96,9 +143,9 @@ async function getCurrentBreadcrumbs(tabId, full) {
 
 // ---- 起動メイン --------------------------------------------------------
 
-async function ensureLocalRoot() {
-  const localRoot = await getLocalRoot();
-  if (!localRoot) {
+async function ensureLocalRoots() {
+  const roots = await getLocalRoots();
+  if (roots.length === 0) {
     notify(
       "初期設定が必要です",
       "拡張のオプションでローカルルート (例: M:\\) を設定してください。"
@@ -106,7 +153,7 @@ async function ensureLocalRoot() {
     chrome.runtime.openOptionsPage();
     return null;
   }
-  return localRoot;
+  return roots;
 }
 
 async function openCurrentFolder(tab) {
@@ -176,11 +223,11 @@ async function runOpen(target) {
     notify("エラー", msg);
     return { ok: false, error: msg };
   }
-  const localRoot = await ensureLocalRoot();
-  if (!localRoot) return { ok: false, error: "ローカルルート未設定" };
+  const localRoots = await ensureLocalRoots();
+  if (!localRoots) return { ok: false, error: "ローカルルート未設定" };
 
-  // Drive for Desktop の構造に応じて複数候補を試行する
-  const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoot);
+  // Drive for Desktop の構造に応じて複数候補を試行する (複数 root 対応)
+  const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoots);
   if (baseCandidates.length === 0) {
     const msg = "ローカルパスを構築できませんでした。";
     notify("エラー", msg);
@@ -262,7 +309,7 @@ async function runOpen(target) {
       triedPaths.map((p) => "  " + p).join("\n") +
       (hostErrors.length ? "\n\nホストエラー:\n" + hostErrors.join("\n") : "") +
       "\n\nオプション画面でローカルルートを確認してください。" +
-      "\n例: I:\\ や I:\\共有ドライブ\\ など。";
+      "\n複数ドライブの場合は 1 行に 1 つずつ指定 (例: I:\\ と M:\\) してください。";
     notify("見つかりません", msg);
     return { ok: false, error: msg };
   }
@@ -367,6 +414,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (
     changes.localRoot ||
+    changes.localRoots ||
     changes.oauthClientId ||
     changes.oauthAccessToken
   ) {
@@ -435,12 +483,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: "Drive 階層が取得できませんでした" });
           return;
         }
-        const localRoot = await getLocalRoot();
-        if (!localRoot) {
+        const localRoots = await getLocalRoots();
+        if (localRoots.length === 0) {
           sendResponse({ ok: false, error: "ローカルルート未設定" });
           return;
         }
-        const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoot);
+        const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoots);
         const buildFinal = (base) => {
           if (target.kind === "folder" && target.name) return base + "\\" + target.name;
           if (target.kind === "file" && target.name) return base + "\\" + target.name;
@@ -570,11 +618,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const breadcrumbs = info ? (info.breadcrumbs || []) : [];
         const isFile = !!(info && info.driveRef && info.driveRef.type === "file");
         const fileName = info && info.fileName || null;
-        const localRoot = await getLocalRoot();
+        const localRoots = await getLocalRoots();
         // 候補のうち最初に存在するものを表示する (1 リクエストで一括チェック)
         let localPath = null;
-        if (localRoot && breadcrumbs && breadcrumbs.length) {
-          const candidates = buildLocalPathCandidates(breadcrumbs, localRoot);
+        if (localRoots.length && breadcrumbs && breadcrumbs.length) {
+          const candidates = buildLocalPathCandidates(breadcrumbs, localRoots);
           const r = await sendToHost({ action: "exists_many", paths: candidates });
           if (r && r.ok && r.results) {
             const hit = r.results.find((x) => x.exists);
@@ -585,7 +633,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             localPath = candidates[0];
           }
         }
-        sendResponse({ ok: true, breadcrumbs, localPath, localRoot, isFile, fileName });
+        sendResponse({
+          ok: true,
+          breadcrumbs,
+          localPath,
+          localRoot: localRoots[0] || "",
+          localRoots,
+          isFile,
+          fileName,
+        });
         return;
       }
       if (msg.type === "hostRequest") {

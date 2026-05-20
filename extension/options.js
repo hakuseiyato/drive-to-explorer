@@ -2,57 +2,102 @@ const $ = (id) => document.getElementById(id);
 const status = $("status");
 
 async function load() {
-  // デフォルト値は持たない (環境固有のドライブレターをコードから除去)
-  const { localRoot = "" } = await chrome.storage.sync.get("localRoot");
-  $("localRoot").value = localRoot;
+  // localRoots (新形式: array) / localRoot (旧形式: string) 両対応で読み込み
+  const obj = await chrome.storage.sync.get(["localRoots", "localRoot"]);
+  let roots = [];
+  if (Array.isArray(obj.localRoots) && obj.localRoots.length) {
+    roots = obj.localRoots;
+  } else if (obj.localRoot) {
+    roots = [obj.localRoot];
+  }
+  $("localRoots").value = roots.join("\n");
 }
 
 function normalize(p) {
   let v = (p || "").trim();
   if (!v) return "";
-  // 末尾の \ や / を除去（最後にバックスラッシュのみ付与）
+  // 末尾の \ や / を除去
   v = v.replace(/[\\/]+$/, "");
   // ドライブレターのみ (例: "M:") の場合は "M:\" に
   if (/^[A-Za-z]:$/.test(v)) v += "\\";
   return v;
 }
 
+// textarea の値を行ごとにパース→正規化→重複排除した配列にする
+function parseRoots(textareaValue) {
+  const lines = String(textareaValue || "")
+    .split(/\r?\n/)
+    .map((s) => normalize(s))
+    .filter((s) => s.length > 0);
+  // 重複排除 (大文字小文字無視)
+  const seen = new Set();
+  const result = [];
+  for (const v of lines) {
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    result.push(v);
+  }
+  return result;
+}
+
+function isValidRoot(v) {
+  return /^[A-Za-z]:[\\/]/.test(v);
+}
+
 $("saveBtn").addEventListener("click", async () => {
-  const v = normalize($("localRoot").value);
-  if (!v) {
-    status.innerHTML = '<span class="err">ルートパスを入力してください。</span>';
+  const roots = parseRoots($("localRoots").value);
+  if (roots.length === 0) {
+    status.innerHTML = '<span class="err">少なくとも 1 つのルートパスを入力してください。</span>';
     return;
   }
-  if (!/^[A-Za-z]:[\\/]/.test(v)) {
-    status.innerHTML = '<span class="err">ドライブレター始まりの絶対パスを指定してください (例: M:\\)。</span>';
+  const invalid = roots.filter((v) => !isValidRoot(v));
+  if (invalid.length) {
+    status.innerHTML =
+      '<span class="err">ドライブレター始まりの絶対パスを指定してください (例: <code>M:\\</code>)。<br>不正な行: ' +
+      invalid.map((v) => `<code>${v}</code>`).join(", ") +
+      "</span>";
     return;
   }
-  await chrome.storage.sync.set({ localRoot: v });
-  // 旧形式のマッピングは破棄
+  // 新形式 + 旧形式 (互換) を両方保存
+  await chrome.storage.sync.set({ localRoots: roots, localRoot: roots[0] });
   await chrome.storage.sync.remove("mappings");
-  $("localRoot").value = v;
-  status.innerHTML = `<span class="ok">保存しました: ${v}</span>`;
+  $("localRoots").value = roots.join("\n");
+  status.innerHTML =
+    '<span class="ok">保存しました: ' +
+    roots.map((v) => `<code>${v}</code>`).join(" / ") +
+    "</span>";
 });
 
 $("testBtn").addEventListener("click", async () => {
-  const v = normalize($("localRoot").value);
-  if (!v) {
+  const roots = parseRoots($("localRoots").value);
+  if (roots.length === 0) {
     status.innerHTML = '<span class="err">ルートパスを入力してください。</span>';
+    return;
+  }
+  const invalid = roots.filter((v) => !isValidRoot(v));
+  if (invalid.length) {
+    status.innerHTML =
+      '<span class="err">不正な行があります (ドライブレター始まりが必要): ' +
+      invalid.map((v) => `<code>${v}</code>`).join(", ") +
+      "</span>";
     return;
   }
   const resp = await chrome.runtime.sendMessage({
     type: "hostRequest",
-    payload: { action: "exists", path: v },
+    payload: { action: "exists_many", paths: roots },
   });
   if (!resp || !resp.ok) {
     status.innerHTML = `<span class="err">ホストエラー: ${(resp && resp.error) || "通信失敗"}</span>`;
     return;
   }
-  if (resp.exists) {
-    status.innerHTML = `<span class="ok">✓ ${v} は存在します。</span>`;
-  } else {
-    status.innerHTML = `<span class="err">✗ ${v} は見つかりません。Drive for desktop のドライブレターを確認してください。</span>`;
-  }
+  const results = resp.results || [];
+  const lines = results.map((r) => {
+    if (r.exists) return `<span class="ok">✓ ${r.path}</span>`;
+    if (r.error) return `<span class="err">✗ ${r.path} — ${r.error}</span>`;
+    return `<span class="err">✗ ${r.path}</span>`;
+  });
+  status.innerHTML = lines.join("<br>");
 });
 
 load();

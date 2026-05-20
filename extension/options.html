@@ -24,15 +24,21 @@
 </head>
 <body>
   <h1>Drive to Explorer - 設定</h1>
-  <p class="lead">Drive for desktop がマウントされているローカルのルートパスを 1 つだけ指定します。</p>
+  <p class="lead">Drive for desktop がマウントされているローカルのルートパスを指定します。複数指定する場合は 1 行に 1 つずつ。</p>
   <p class="muted">
-    例: <code>M:\</code> や <code>G:\</code>。Drive 階層 (マイドライブ / 共有ドライブ / フォルダ名…) が、このルート配下にそのままミラーされていることが前提です。
+    例: <code>M:\</code> や <code>G:\</code>。Drive 階層 (マイドライブ / 共有ドライブ / フォルダ名…) が、このルート配下にそのままミラーされていることが前提です。<br>
+    複数指定すると、上から順に試行して最初に存在するパスを使います。
   </p>
 
   <table>
     <tr>
-      <td style="width: 200px"><label for="localRoot">ローカルルートパス</label></td>
-      <td><input type="text" id="localRoot" placeholder="例: M:\" autocomplete="off"></td>
+      <td style="width: 200px; vertical-align: top; padding-top: 8px;">
+        <label for="localRoots">ローカルルートパス</label>
+        <div class="muted" style="margin-top:4px;">1 行に 1 つ</div>
+      </td>
+      <td>
+        <textarea id="localRoots" rows="3" placeholder="例:&#10;M:\&#10;I:\" autocomplete="off" style="width:100%; box-sizing:border-box; padding:4px 6px; font:inherit; font-family:Consolas, monospace; resize:vertical;"></textarea>
+      </td>
     </tr>
   </table>
 

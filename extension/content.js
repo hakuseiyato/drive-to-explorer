@@ -428,16 +428,19 @@
   }
 
   // document.title から推定
-  // Drive の title は通常「<current> - Google ドライブ」形式で階層情報を含まないため、
-  // 単一セグメントを「現在フォルダ名」として控えめに採用する。
-  // (旧実装の parts.reverse() は「現在 - 親 - root」前提だったが Drive の実出力と
-  //  一致せず、誤った順序のパンくずを返す原因になっていたので撤廃)
+  // Drive の title 形式の観測:
+  //   - 「<current> - Google ドライブ」(階層1段)
+  //   - 「<parent> - <current> - Google ドライブ」(Workspace 等で観測される深い階層)
+  // " - " で区切られたセグメントが複数ある場合は parent → current の順と仮定して
+  //  そのまま配列で返す (reverse はしない)。
+  // 単一セグメントなら 1 要素配列。
   function extractBreadcrumbsByTitle() {
     const m = document.title && document.title.match(/^(.+?)\s*[-–]\s*Google/i);
     if (!m || !m[1]) return [];
     const head = m[1].trim();
     if (!head || head.length > 200) return [];
-    return [head];
+    const parts = head.split(/\s+[-–]\s+/).map((s) => s.trim()).filter(Boolean);
+    return parts.length ? parts : [head];
   }
 
   function extractBreadcrumbs() {
