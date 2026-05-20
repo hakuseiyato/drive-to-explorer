@@ -134,12 +134,18 @@ async function refreshOAuthUi() {
   if (!st.hasClientId) {
     oauthStatus.innerHTML =
       '<span class="muted">Client ID 未設定 — DOM 解析にフォールバックします。</span>';
+  } else if (st.isDefaultClientId && !st.signedIn) {
+    oauthStatus.innerHTML =
+      '<span class="muted">配布版の既定 Client ID を使用します。<strong>「サインイン」</strong>を押して利用開始してください。</span>';
   } else if (!st.signedIn) {
     oauthStatus.innerHTML =
-      '<span class="muted">Client ID 設定済み。サインインしていないため、必要時に対話認可が走ります。</span>';
+      '<span class="muted">独自 Client ID 設定済み。サインインしていないため、必要時に対話認可が走ります。</span>';
+  } else if (st.isDefaultClientId) {
+    oauthStatus.innerHTML =
+      '<span class="ok">✓ サインイン済み (既定 Client ID 使用) — API 経由でパス解決します。</span>';
   } else {
     oauthStatus.innerHTML =
-      '<span class="ok">✓ サインイン済み — API 経由でパス解決します。</span>';
+      '<span class="ok">✓ サインイン済み (独自 Client ID 使用) — API 経由でパス解決します。</span>';
   }
 }
 

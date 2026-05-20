@@ -87,7 +87,10 @@ jobs:
           Copy-Item -Recurse extension          (Join-Path $stage 'extension')
           Copy-Item -Recurse native-host        (Join-Path $stage 'native-host')
           Copy-Item -Recurse shell-integration  (Join-Path $stage 'shell-integration')
+          if (Test-Path docs) { Copy-Item -Recurse docs (Join-Path $stage 'docs') }
           Copy-Item README.md                   $stage
+          if (Test-Path update.ps1) { Copy-Item update.ps1 $stage }
+          if (Test-Path update.bat) { Copy-Item update.bat $stage }
 
           # __pycache__ などビルド残滓を念のため除去
           Get-ChildItem -Recurse -Force $stage -Directory `

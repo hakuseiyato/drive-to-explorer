@@ -43,11 +43,23 @@ drive-to-explorer/
 
 ## セットアップ
 
+### 推奨インストール先
+
+将来の更新を楽にするため、**バージョン無しの安定パス** に展開することを推奨します:
+
+```
+F:\Tools\drive-to-explorer\
+```
+
+（ドライブレターや配置先は任意ですが、バージョン番号を含まないフォルダ名にしてください）
+
+zip を `drive-to-explorer-v0.2.1/` のようなバージョン入りフォルダのまま使うと、更新のたびに Native Host のレジストリパスが変わり再登録が必要になります。安定フォルダなら `update.bat` で上書き更新 → Native Host も自動再登録できます。
+
 ### 前提
 - **Drive for desktop** がインストールされ、ドライブレター (例: `I:\`) でマウントされていること
 - 以下のいずれかを満たすこと:
   - **Python 3** がインストール済みで、`py` または `python` で起動できる（確認: `py -3 -V` または `python -V`）
-  - もしくは事前ビルド済みの `native-host/drive_to_explorer_host.exe` が同梱されている（後述「Python 不要モード」参照）
+  - もしくは事前ビルド済みの `native-host/drive_to_explorer_host.exe` が同梱されている（リリース zip には同梱済み）
 
 ### 1. 拡張機能を読み込む
 
@@ -86,15 +98,21 @@ drive-to-explorer/
 
 ---
 
-### 4. (任意・推奨) Drive REST API + OAuth セットアップ
+### 4. OAuth サインイン (推奨)
 
-DOM 解析の脆さ (Drive UI 変更で壊れるリスク) を回避し、API 経由で堅牢にパスを解決します。
-設定後は「パスを表示」popup フラッシュも不要になります。
-**ファイル単体 URL** (`/file/d/<id>/view`) からの起動もこれを設定すれば完全対応します。
+v0.2.2+ から **配布版に既定の OAuth Client ID が同梱** されているので、通常は **「サインイン」ボタンを押すだけ** で API モードが使えるようになります。
 
-> **詳細なステップバイステップガイド**: [docs/GCP_SETUP.md](docs/GCP_SETUP.md)
->
-> 所要時間 5 分、完全無料、Yato さんが1回だけ作業すれば全配布先で同一クライアント ID が使えます (v0.2.0+ で拡張機能 ID 固定化済み)。
+1. 拡張オプション画面を開く（拡張アイコン右クリック → 「オプション」）
+2. **Drive REST API (OAuth)** セクションの **「サインイン」** をクリック
+3. 別タブで Google アカウント選択 → 「許可」
+4. **「✓ サインイン済み (既定 Client ID 使用)」** が出れば完了
+
+> **「このアプリは確認されていません」と警告が出る場合**: 「詳細」 → 「Drive to Explorer に移動」で進む。これは「Google 審査を通っていない自作アプリ」の標準警告で問題なし。
+
+#### 独自の Client ID を使いたい場合 (任意)
+
+組織内で独自の GCP プロジェクトで管理したい等の場合は、自分で OAuth Client ID を発行してオプション画面に貼り付けてください。詳細手順: [docs/GCP_SETUP.md](docs/GCP_SETUP.md)
+（リダイレクト URI は `https://pkiecgchhhhcgnjjgofmlfobbhacdcge.chromiumapp.org/` 固定）
 
 #### 簡単セットアップ (推奨): セットアップウィザード
 
@@ -256,6 +274,33 @@ OAuth は任意機能なので未設定でもバッジは出ません。tooltip 
 ### Drive UI 変更でパンくずが取れなくなった
 - `extension/content.js` の `getVisibleMidBreadcrumbs` / `readPathViaShowPath` / `getCurrentFolderName` を要更新
 - DevTools コンソールで `[DTE] readPathViaShowPath: result= ...` の中身を確認すれば、どこで取れていないか判別できます
+
+---
+
+## 更新方法
+
+### A. 自動更新 (推奨)
+
+インストールフォルダ直下の **`update.bat`** をダブルクリックするだけです。
+
+動作:
+1. GitHub Releases API から最新版を確認
+2. 同じバージョンなら何もしない (`update.bat -Force` で強制再展開)
+3. 新しい zip を一時フォルダにダウンロード → 解凍
+4. 既存ファイルに上書き展開 (`extension/` `native-host/` `shell-integration/` `docs/` `README.md`)
+5. `native-host/install.bat` を自動実行 (拡張機能 ID 既定値を承認)
+6. ブラウザ再起動を促す
+
+ブラウザが起動中だと `drive_to_explorer_host.exe` の上書きに失敗する可能性があるため、事前に終了するのが安全です（update.bat が検知して警告します）。
+
+### B. 手動更新
+
+1. [Releases](https://github.com/hakuseiyato/drive-to-explorer/releases) から最新 zip をダウンロード
+2. 既存インストール先に上書き解凍
+3. `native-host/install.bat` をダブルクリック → Enter で承認
+4. ブラウザを完全終了 → 再起動 → `brave://extensions` で拡張の「↻ 再読み込み」
+
+> `manifest.key` により拡張機能 ID は不変なので、`chrome.storage.sync` に保存された ローカルルートパスと OAuth Client ID は更新後も保持されます。OAuth セッションだけは切れるので、必要なら「サインイン」を押し直してください。
 
 ---
 

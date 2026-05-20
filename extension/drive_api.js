@@ -11,9 +11,18 @@ const DTE_API = (() => {
   const PATH_CACHE_KEY = "folderPathCache";
   const SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly";
 
+  // 配布物に同梱する既定の OAuth Client ID。
+  // この拡張機能は manifest.key により拡張機能 ID が固定 (pkiecgch...) されているため、
+  // この Client ID に紐付くリダイレクト URI (https://pkiecgch.../chromiumapp.org/) も
+  // この拡張機能でしか到達できない → 第三者は悪用できない。
+  // Chrome Web Store 公開拡張で oauth2.client_id を manifest に書くのと同じパターン。
+  // ユーザーが個別に上書きしたい場合はオプション画面で別の Client ID を入力すれば
+  // chrome.storage.sync の値が優先される。
+  const DEFAULT_CLIENT_ID = "857629506756-voets6ot4b34c12fetdauc7b9a3fau3v.apps.googleusercontent.com";
+
   async function getClientId() {
     const { [CLIENT_ID_KEY]: id } = await chrome.storage.sync.get(CLIENT_ID_KEY);
-    return id || null;
+    return id || DEFAULT_CLIENT_ID || null;
   }
 
   async function setClientId(id) {
@@ -366,10 +375,12 @@ const DTE_API = (() => {
   }
 
   async function getStatus() {
-    const clientId = await getClientId();
+    const { [CLIENT_ID_KEY]: userId } = await chrome.storage.sync.get(CLIENT_ID_KEY);
+    const effectiveId = userId || DEFAULT_CLIENT_ID;
     const token = await getCachedToken();
     return {
-      hasClientId: !!clientId,
+      hasClientId: !!effectiveId,
+      isDefaultClientId: !userId && !!DEFAULT_CLIENT_ID,
       signedIn: !!token,
     };
   }

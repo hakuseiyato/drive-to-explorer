@@ -388,9 +388,13 @@ async function updateBadge() {
     if (!apiStatus.hasClientId) {
       apiNote = " (OAuth 未設定 - DOM 解析モード)";
     } else if (!apiStatus.signedIn) {
-      apiNote = " (OAuth 未サインイン - 必要時に対話認可)";
+      apiNote = apiStatus.isDefaultClientId
+        ? " (OAuth 未サインイン - オプション画面でサインインしてください)"
+        : " (OAuth 未サインイン - 必要時に対話認可)";
     } else {
-      apiNote = " (API モード)";
+      apiNote = apiStatus.isDefaultClientId
+        ? " (API モード - 既定 Client ID)"
+        : " (API モード - 独自 Client ID)";
     }
   } catch (_) {}
   setBadge("", "", "Drive to Explorer — 動作中" + apiNote);
