@@ -4,10 +4,27 @@
 // - 「パスを表示」ボタンを内部的にクリックして完全なパスを取得
 
 (function () {
-  const DEBUG = true;
+  // DEBUG フラグは chrome.storage.local の dteDebug から非同期で読み込む。
+  // 起動時のログはバッファして、フラグ取得後にまとめて出力する。
+  let DEBUG = false;
+  const _logBuffer = [];
   const dlog = (...args) => {
-    if (DEBUG) console.log("[DTE]", ...args);
+    if (DEBUG) {
+      console.log("[DTE]", ...args);
+    } else {
+      _logBuffer.push(args);
+      if (_logBuffer.length > 200) _logBuffer.shift();
+    }
   };
+  try {
+    chrome.storage.local.get("dteDebug", (obj) => {
+      DEBUG = !!(obj && obj.dteDebug);
+      if (DEBUG) {
+        _logBuffer.forEach((a) => console.log("[DTE]", ...a));
+      }
+      _logBuffer.length = 0;
+    });
+  } catch (_) {}
   dlog("content script loaded", location.href);
 
   // ----------------------------------------------------------------------

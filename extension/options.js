@@ -142,6 +142,18 @@ loadClientId();
 refreshOAuthUi();
 
 // =====================================================================
+// デバッグトグル
+// =====================================================================
+async function loadDebugFlag() {
+  const { dteDebug = false } = await chrome.storage.local.get("dteDebug");
+  $("debugToggle").checked = !!dteDebug;
+}
+$("debugToggle").addEventListener("change", async (e) => {
+  await chrome.storage.local.set({ dteDebug: !!e.target.checked });
+});
+loadDebugFlag();
+
+// =====================================================================
 // OAuth セットアップウィザード
 // =====================================================================
 function escHtml(s) {

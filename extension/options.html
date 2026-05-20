@@ -101,6 +101,23 @@
 
   <div class="status" id="oauthStatus"></div>
 
+  <hr style="margin: 32px 0; border: none; border-top: 1px solid #eee;">
+
+  <h1 style="font-size: 16px;">デバッグ</h1>
+  <p class="muted">
+    Drive ページ / Service Worker のコンソールに <code>[DTE]</code> ログを大量に出力します。
+    通常の利用ではオフのままで構いません。
+  </p>
+  <table>
+    <tr>
+      <td style="width: 200px"><label for="debugToggle">コンソールログ出力</label></td>
+      <td>
+        <input type="checkbox" id="debugToggle">
+        <span class="muted">— トラブルシューティング時のみ ON</span>
+      </td>
+    </tr>
+  </table>
+
   <!-- ウィザードモーダル -->
   <div id="wizardModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
     <div style="background:#fff; border-radius:8px; max-width:640px; width:92%; max-height:88vh; overflow:auto; padding:24px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
