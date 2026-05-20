@@ -227,7 +227,7 @@ stdin に 4byte little-endian 長 + JSON、stdout に同形式（Chromium Native
 | 🟠 `!` (橙) | Native Host 未登録 | `install.bat` を実行してブラウザ再起動 |
 | (バッジ無し) | 動作可能 | アイコンにマウスを乗せると詳細 (OAuth モード等) が tooltip 表示 |
 
-OAuth (#1) は任意機能なので未設定でもバッジは出ません。tooltip に `(DOM 解析モード)` 等で示されます。
+OAuth は任意機能なので未設定でもバッジは出ません。tooltip に `(DOM 解析モード)` 等で示されます。
 
 ---
 
@@ -266,10 +266,38 @@ OAuth (#1) は任意機能なので未設定でもバッジは出ません。too
 
 ## スコープ外（将来拡張）
 
-- Drive REST API (OAuth) を使った folder ID → 正確なパス解決
-- 共有ドライブ名の自動マッピング
+- Drive UI のローカライズ動的検出（現状は日本語/英語の文字列がハードコード、`extension/content.js` の `LOCALE_STRINGS` 集約は未実施）
+- 完全な i18n (UI 文言の翻訳)
 - macOS / Linux 対応
 - 拡張機能の Chrome Web Store 公開（現状は Unpacked load 前提）
+
+---
+
+## サポートする URL パターン
+
+| URL | 挙動 |
+|---|---|
+| `https://drive.google.com/drive/folders/<id>` | フォルダ → ローカル Explorer で開く |
+| `https://drive.google.com/file/d/<id>/view` | ファイル単体プレビュー → ローカル同名ファイルがあれば選択、無ければ親フォルダを開く（OAuth セットアップ済みで有効）|
+| `https://drive.google.com/open?id=<id>` | フォルダ ID として処理（API 経由で判別）|
+
+> ファイル単体URL対応は v0.2.0 で追加。OAuth 未設定時は title からファイル名のみ抽出してフォールバック動作。
+
+---
+
+## キーボードショートカット
+
+`chrome://extensions/shortcuts` (Edge は `edge://extensions/shortcuts` 等) で **「現在の Drive フォルダ（またはファイル）をエクスプローラーで開く」** にキー割当可能。
+
+デフォルトは未割当（拡張間衝突を避けるため）。`Ctrl+Shift+E` 等の好みの組み合わせを設定。
+
+---
+
+## デバッグログ
+
+オプション画面の「デバッグ」セクションで **「コンソールログ出力」** を ON にすると、Drive ページコンソールおよび Service Worker コンソールに `[DTE]` プレフィックス付きの詳細ログが出ます。
+
+通常運用ではオフのままで OK。トラブル調査時のみ ON にして DevTools でログを確認します。
 
 ---
 

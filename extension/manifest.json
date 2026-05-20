@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Drive to Explorer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Google Drive (Web) で表示中のフォルダを Windows エクスプローラーで開く。",
   "permissions": [
     "nativeMessaging",
