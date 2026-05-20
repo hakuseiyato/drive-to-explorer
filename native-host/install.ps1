@@ -23,15 +23,38 @@ if (-not (Test-Path $Manifest)) {
     exit 1
 }
 
-# Prompt if not given
+# Prompt if not given.
+# v0.2.0+ では manifest.key により拡張機能 ID は配布パッケージで固定なので、
+# manifest.json から既存の ID を読んで「Enter で承認」できるようにする。
 if (-not $ExtensionId -or $ExtensionId.Trim() -eq "") {
-    Write-Host ""
-    Write-Host "拡張機能 ID を入力してください。" -ForegroundColor Cyan
-    Write-Host "  ブラウザの拡張オプション画面 (Drive to Explorer) に表示されています。"
-    Write-Host "  または brave://extensions / chrome://extensions / edge://extensions で"
-    Write-Host "  デベロッパーモードを ON にすると確認できます。"
-    Write-Host ""
-    $ExtensionId = Read-Host "Extension ID"
+    $defaultId = $null
+    try {
+        $raw = Get-Content -Raw -Path $Manifest -Encoding UTF8
+        if ($raw -match 'chrome-extension://([a-p]{32})/') {
+            $defaultId = $matches[1]
+        }
+    } catch {}
+
+    if ($defaultId) {
+        Write-Host ""
+        Write-Host "拡張機能 ID は固定化済みです: $defaultId" -ForegroundColor Green
+        Write-Host "  (manifest.key により配布版で同一 ID。通常そのままで OK)"
+        Write-Host ""
+        $userInput = Read-Host "Extension ID (Enter で既定値 $defaultId を使用)"
+        if ($userInput -and $userInput.Trim() -ne "") {
+            $ExtensionId = $userInput
+        } else {
+            $ExtensionId = $defaultId
+        }
+    } else {
+        Write-Host ""
+        Write-Host "拡張機能 ID を入力してください。" -ForegroundColor Cyan
+        Write-Host "  ブラウザの拡張オプション画面 (Drive to Explorer) に表示されています。"
+        Write-Host "  または brave://extensions / chrome://extensions / edge://extensions で"
+        Write-Host "  デベロッパーモードを ON にすると確認できます。"
+        Write-Host ""
+        $ExtensionId = Read-Host "Extension ID"
+    }
 }
 
 $ExtensionId = $ExtensionId.Trim()
