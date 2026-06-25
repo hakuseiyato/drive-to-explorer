@@ -193,6 +193,61 @@ loadClientId();
 refreshOAuthUi();
 
 // =====================================================================
+// API モードテスト
+// =====================================================================
+const apiTestStatus = $("apiTestStatus");
+
+function escHtmlSimple(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+$("apiTestBtn").addEventListener("click", async () => {
+  $("apiTestBtn").disabled = true;
+  apiTestStatus.innerHTML = '<span class="muted">テスト中…</span>';
+
+  const r = await chrome.runtime.sendMessage({ type: "apiTest" });
+  $("apiTestBtn").disabled = false;
+
+  if (!r) {
+    apiTestStatus.innerHTML = '<span class="err">背景プロセスから応答がありません</span>';
+    return;
+  }
+
+  if (r.ok && r.breadcrumbs) {
+    const path = r.breadcrumbs.map(escHtmlSimple).join(" / ");
+    const refStr = r.driveRef
+      ? `${r.driveRef.type}:${escHtmlSimple(r.driveRef.id)}`
+      : "";
+    apiTestStatus.innerHTML =
+      `<span class="ok">✓ API 解決成功</span><br>` +
+      `<span class="muted">URL: ${escHtmlSimple(r.tabUrl || "")}</span><br>` +
+      `<span class="muted">対象: ${refStr}</span><br>` +
+      `<div style="margin-top:6px;padding:6px 8px;background:#fff;border:1px solid #ddd;border-radius:3px;font-family:Consolas,monospace;font-size:12px;word-break:break-all;">${path}</div>`;
+    return;
+  }
+
+  // エラー時: code と詳細を表示
+  const code = r.code || "?";
+  const codeHints = {
+    "NO_TAB": "アクティブタブが取れません。Drive タブを開いた状態でテストしてください。",
+    "NO_DRIVE_REF": "現在のタブが Drive のフォルダ／ファイル URL ではありません。",
+    "NO_CLIENT_ID": "OAuth Client ID が未設定です (空文字)。配布版なら自動的に既定値が使われるはずなので、storage 異常の可能性。",
+    "AUTH_FAILED": "認可フロー失敗。「サインイン」ボタンを押してやり直してください。",
+    "NO_INTERACTIVE_TOKEN": "非対話モードでトークン取得失敗。「サインイン」ボタンを押してください (Drive ページからの呼び出しは user activation 不足で interactive が動かないため、options 画面 / popup から明示的にサインインが必要)。",
+    "EXCEPTION": "予期しない例外。デバッグログを ON にして DevTools コンソールを確認してください。",
+  };
+  const hint = codeHints[code] || "";
+  const errMsg = escHtmlSimple(r.error || "不明なエラー");
+  apiTestStatus.innerHTML =
+    `<span class="err">✗ API 解決失敗 (code: ${escHtmlSimple(code)})</span><br>` +
+    `<span class="muted">${errMsg}</span>` +
+    (hint ? `<br><span class="muted" style="display:inline-block;margin-top:4px;">→ ${escHtmlSimple(hint)}</span>` : "") +
+    (r.tabUrl ? `<br><span class="muted">URL: ${escHtmlSimple(r.tabUrl)}</span>` : "");
+});
+
+// =====================================================================
 // デバッグトグル
 // =====================================================================
 async function loadDebugFlag() {

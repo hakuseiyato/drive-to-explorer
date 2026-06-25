@@ -11,6 +11,18 @@ const DTE_API = (() => {
   const PATH_CACHE_KEY = "folderPathCache";
   const SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly";
 
+  // DEBUG ログ (chrome.storage.local.dteDebug を非同期で読み込み)
+  let DEBUG = false;
+  try {
+    chrome.storage.local.get("dteDebug", (o) => { DEBUG = !!(o && o.dteDebug); });
+    chrome.storage.onChanged.addListener((c, area) => {
+      if (area === "local" && c.dteDebug) DEBUG = !!c.dteDebug.newValue;
+    });
+  } catch (_) {}
+  function apilog(...args) {
+    if (DEBUG) console.log("[DTE/API]", ...args);
+  }
+
   // 配布物に同梱する既定の OAuth Client ID。
   // この拡張機能は manifest.key により拡張機能 ID が固定 (pkiecgch...) されているため、
   // この Client ID に紐付くリダイレクト URI (https://pkiecgch.../chromiumapp.org/) も
@@ -53,10 +65,15 @@ const DTE_API = (() => {
 
   async function getAuthToken(interactive) {
     const cached = await getCachedToken();
-    if (cached) return cached;
+    if (cached) {
+      apilog("getAuthToken: cached token hit");
+      return cached;
+    }
+    apilog("getAuthToken: no cached token, interactive=" + interactive);
 
     const clientId = await getClientId();
     if (!clientId) {
+      apilog("getAuthToken: NO_CLIENT_ID");
       const e = new Error("OAuth Client ID 未設定");
       e.code = "NO_CLIENT_ID";
       throw e;
@@ -79,8 +96,9 @@ const DTE_API = (() => {
             const msg =
               (chrome.runtime.lastError && chrome.runtime.lastError.message) ||
               "認可フロー失敗";
+            apilog("launchWebAuthFlow error:", msg);
             const e = new Error(msg);
-            e.code = "AUTH_FAILED";
+            e.code = interactive ? "AUTH_FAILED" : "NO_INTERACTIVE_TOKEN";
             reject(e);
             return;
           }
@@ -90,6 +108,7 @@ const DTE_API = (() => {
           const expIn = parseInt(params.get("expires_in") || "3600", 10);
           if (!token) {
             const errParam = params.get("error");
+            apilog("launchWebAuthFlow no token, error param:", errParam);
             const e = new Error(
               errParam ? "OAuth エラー: " + errParam : "access_token 取得失敗"
             );
@@ -97,6 +116,7 @@ const DTE_API = (() => {
             reject(e);
             return;
           }
+          apilog("launchWebAuthFlow success, expires_in=" + expIn);
           await setCachedToken(token, expIn);
           resolve(token);
         }
@@ -207,13 +227,16 @@ const DTE_API = (() => {
     let parentId = current.parents && current.parents[0];
 
     let safety = 50;
+    let lastAncestorError = null;
     while (parentId && safety-- > 0) {
       let parent;
       try {
         parent = await getFile(parentId, token);
       } catch (e) {
         // 権限が無い等で取れない場合は中断 (取れたところまで返す)
+        lastAncestorError = e;
         console.warn("[DTE/API] 祖先取得中断 parentId=" + parentId + ": " + e.message);
+        apilog("祖先取得失敗 status=" + (e.status || 0) + " parentId=" + parentId);
         break;
       }
       // 共有ドライブのトップに到達したら停止 (driveId === parent.id のケース)

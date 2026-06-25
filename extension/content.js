@@ -428,19 +428,20 @@
   }
 
   // document.title から推定
-  // Drive の title 形式の観測:
-  //   - 「<current> - Google ドライブ」(階層1段)
-  //   - 「<parent> - <current> - Google ドライブ」(Workspace 等で観測される深い階層)
-  // " - " で区切られたセグメントが複数ある場合は parent → current の順と仮定して
-  //  そのまま配列で返す (reverse はしない)。
-  // 単一セグメントなら 1 要素配列。
+  // Drive Web の title 形式 (現代 UI で観測):
+  //   「<current> - <parent> - Google ドライブ」 (current が左、root が右)
+  // そのため split したら reverse して [parent, current] (= root → current 順) にする。
+  // 単一セグメントの場合は 1 要素配列。
+  // 環境差で逆順の可能性もあるため、extractBreadcrumbs 側で両順を candidates に積む。
   function extractBreadcrumbsByTitle() {
     const m = document.title && document.title.match(/^(.+?)\s*[-–]\s*Google/i);
     if (!m || !m[1]) return [];
     const head = m[1].trim();
     if (!head || head.length > 200) return [];
     const parts = head.split(/\s+[-–]\s+/).map((s) => s.trim()).filter(Boolean);
-    return parts.length ? parts : [head];
+    if (parts.length <= 1) return parts.length ? parts : [head];
+    // Drive 現 UI: current - parent - Google → reverse して parent - current
+    return parts.slice().reverse();
   }
 
   function extractBreadcrumbs() {
@@ -474,15 +475,65 @@
       if (arr.length) candidates.push(arr);
     }
 
-    // 3. title フォールバック
+    // 3. title フォールバック (両順を候補に)
     const titleArr = extractBreadcrumbsByTitle();
-    if (titleArr.length) candidates.push(titleArr);
+    if (titleArr.length) {
+      candidates.push(titleArr);
+      if (titleArr.length > 1) {
+        // 環境差吸収: 逆順も candidates に push (buildLocalPathCandidates で両試行される)
+        candidates.push(titleArr.slice().reverse());
+      }
+    }
 
     // 最も階層が深いものを採用
     candidates.sort((a, b) => b.length - a.length);
     const result = (candidates[0] || []).filter((s) => s && s.length < 200);
-    dlog("extractBreadcrumbs result=", result);
+    dlog("extractBreadcrumbs result=", result, "all candidates=", candidates);
     return result;
+  }
+
+  // 両順 candidates 含むすべての breadcrumb 候補配列を返す
+  // (background.js が複数候補から buildLocalPathCandidates を生成するため)
+  function extractAllBreadcrumbCandidates() {
+    const out = [];
+    const aria = extractBreadcrumbsByAria();
+    if (aria.length) out.push(aria);
+
+    const selectors = [
+      'div[role="navigation"] [role="button"]',
+      '[data-target="breadcrumbs"] [role="button"]',
+      '[aria-label="ロケーション"] [role="button"]',
+      '[aria-label*="Location"] [role="button"]',
+    ];
+    for (const sel of selectors) {
+      let nodes;
+      try { nodes = document.querySelectorAll(sel); } catch (_) { continue; }
+      if (!nodes || !nodes.length) continue;
+      const arr = [];
+      nodes.forEach((b) => {
+        const t = textOf(b);
+        if (!looksLikeBreadcrumbItem(t)) return;
+        if (arr.length && arr[arr.length - 1] === t) return;
+        arr.push(t);
+      });
+      if (arr.length) out.push(arr);
+    }
+
+    const titleArr = extractBreadcrumbsByTitle();
+    if (titleArr.length) {
+      out.push(titleArr);
+      if (titleArr.length > 1) out.push(titleArr.slice().reverse());
+    }
+    // 重複配列を除去
+    const seen = new Set();
+    const dedup = [];
+    for (const arr of out) {
+      const key = arr.join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dedup.push(arr);
+    }
+    return dedup;
   }
 
   // 完全なパス取得 (メイン): まず「パスを表示」、ダメならフォールバック
@@ -551,7 +602,10 @@
 
   // 完全なパス取得 (メイン): API → 「パスを表示」popup → DOM の順に試行
   // ファイル単体URLでは file ID から親フォルダ解決を試す
-  async function getFullBreadcrumbs() {
+  // 戻り値に source / fallback candidates を含めるため非標準形式に変更:
+  //   { breadcrumbs: string[], source: "api"|"show-path"|"dom-title"|"file-name-only",
+  //     altCandidates: string[][] }
+  async function getFullBreadcrumbsDetailed() {
     const ref = getDriveRefFromUrl();
     // ファイル単体URLは API 経由でしか解決できない
     if (ref && ref.type === "file") {
@@ -559,14 +613,18 @@
         const api = await getBreadcrumbsByApiForFile();
         if (api && api.length) {
           dlog("getFullBreadcrumbs(file): via API", api);
-          return api;
+          return { breadcrumbs: api, source: "api", altCandidates: [] };
         }
       } catch (e) {
         dlog("API file path resolve threw", e);
       }
       // ファイル単体URLで API 解決失敗時のフォールバック: title からファイル名のみ返す
       const name = getCurrentFileName();
-      return name ? [name] : [];
+      return {
+        breadcrumbs: name ? [name] : [],
+        source: "file-name-only",
+        altCandidates: [],
+      };
     }
 
     // 1. Drive REST API (OAuth) - 設定済みなら最も信頼できる
@@ -574,7 +632,7 @@
       const api = await getBreadcrumbsByApi();
       if (api && api.length) {
         dlog("getFullBreadcrumbs: via API", api);
-        return api;
+        return { breadcrumbs: api, source: "api", altCandidates: [] };
       }
     } catch (e) {
       dlog("API path resolve threw", e);
@@ -582,12 +640,26 @@
     // 2. パスを表示 popup 経由 (user activation 必要)
     try {
       const full = await readPathViaShowPath();
-      if (full && full.length >= 1) return full;
+      if (full && full.length >= 1) {
+        dlog("getFullBreadcrumbs: via show-path", full);
+        return { breadcrumbs: full, source: "show-path", altCandidates: [] };
+      }
     } catch (e) {
       dlog("readPathViaShowPath threw", e);
     }
-    // 3. DOM / title フォールバック
-    return extractBreadcrumbs();
+    // 3. DOM / title フォールバック (両順含む全 candidate を返す)
+    const primary = extractBreadcrumbs();
+    const all = extractAllBreadcrumbCandidates();
+    // primary 以外を altCandidates として保持 (background で複数試行)
+    const altCandidates = all.filter((arr) => arr.join("|") !== primary.join("|"));
+    dlog("getFullBreadcrumbs: via dom-title", primary, "alts=", altCandidates);
+    return { breadcrumbs: primary, source: "dom-title", altCandidates };
+  }
+
+  // 後方互換: 文字列配列のみ返す既存 API
+  async function getFullBreadcrumbs() {
+    const r = await getFullBreadcrumbsDetailed();
+    return r.breadcrumbs;
   }
 
   // ----------------------------------------------------------------------
@@ -997,17 +1069,19 @@
   window.addEventListener("__DTE_FETCH_PATH__", async () => {
     let result = null;
     try {
-      const bc = await getFullBreadcrumbs();
+      const d = await getFullBreadcrumbsDetailed();
       const driveRef = getDriveRefFromUrl();
       result = {
-        breadcrumbs: bc || [],
+        breadcrumbs: d.breadcrumbs || [],
+        altCandidates: d.altCandidates || [],
+        source: d.source,
         folderId: getFolderIdFromUrl(),
         driveRef,
         fileName: driveRef && driveRef.type === "file" ? getCurrentFileName() : null,
         url: location.href,
       };
     } catch (e) {
-      result = { breadcrumbs: [], error: String(e) };
+      result = { breadcrumbs: [], altCandidates: [], error: String(e) };
     }
     try {
       window.dispatchEvent(
@@ -1037,10 +1111,12 @@
     if (msg.type === "getBreadcrumbsFull") {
       (async () => {
         try {
-          const full = await getFullBreadcrumbs();
+          const d = await getFullBreadcrumbsDetailed();
           const driveRef = getDriveRefFromUrl();
           sendResponse({
-            breadcrumbs: full || [],
+            breadcrumbs: d.breadcrumbs || [],
+            altCandidates: d.altCandidates || [],
+            source: d.source,
             folderId: getFolderIdFromUrl(),
             driveRef,
             fileName: driveRef && driveRef.type === "file" ? getCurrentFileName() : null,
@@ -1048,7 +1124,7 @@
             title: document.title,
           });
         } catch (e) {
-          sendResponse({ breadcrumbs: [], error: String(e) });
+          sendResponse({ breadcrumbs: [], altCandidates: [], error: String(e) });
         }
       })();
       return true;

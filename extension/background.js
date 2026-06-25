@@ -192,6 +192,7 @@ async function openCurrentFolder(tab) {
       kind: "file",
       name: fileName,
       breadcrumbs: parentBc,
+      altCandidates: info.altCandidates || [],
     });
   }
 
@@ -203,6 +204,7 @@ async function openCurrentFolder(tab) {
   return await runOpen({
     breadcrumbs: info.breadcrumbs,
     kind: "current",
+    altCandidates: info.altCandidates || [],
   });
 }
 
@@ -226,8 +228,28 @@ async function runOpen(target) {
   const localRoots = await ensureLocalRoots();
   if (!localRoots) return { ok: false, error: "ローカルルート未設定" };
 
-  // Drive for Desktop の構造に応じて複数候補を試行する (複数 root 対応)
-  const baseCandidates = buildLocalPathCandidates(breadcrumbs, localRoots);
+  // Drive for Desktop の構造に応じて複数候補を試行する (複数 root + altCandidates 対応)
+  // target.altCandidates が指定されていれば、breadcrumbs 含めて全パターンを candidate に展開
+  const breadcrumbVariants = [breadcrumbs];
+  if (Array.isArray(target.altCandidates)) {
+    for (const alt of target.altCandidates) {
+      if (Array.isArray(alt) && alt.length) breadcrumbVariants.push(alt);
+    }
+  }
+  const baseCandidatesSet = [];
+  for (const bc of breadcrumbVariants) {
+    for (const p of buildLocalPathCandidates(bc, localRoots)) {
+      baseCandidatesSet.push(p);
+    }
+  }
+  // 重複排除
+  const seenBases = new Set();
+  const baseCandidates = baseCandidatesSet.filter((p) => {
+    const k = p.toLowerCase();
+    if (seenBases.has(k)) return false;
+    seenBases.add(k);
+    return true;
+  });
   if (baseCandidates.length === 0) {
     const msg = "ローカルパスを構築できませんでした。";
     notify("エラー", msg);
@@ -528,6 +550,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // ファイル単体URLでは msg.driveRef.type === "file" + msg.fileName で受信
         const isFile = msg.driveRef && msg.driveRef.type === "file";
         const bc = msg.breadcrumbs || [];
+        const alts = msg.altCandidates || [];
         if (isFile) {
           const fileName = msg.fileName ||
             (bc.length ? bc[bc.length - 1] : null);
@@ -538,6 +561,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             kind: "file",
             name: fileName,
             breadcrumbs: parentBc,
+            altCandidates: alts,
           });
           sendResponse(r);
           return;
@@ -545,11 +569,75 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const r = await runOpen({
           kind: "current",
           breadcrumbs: bc,
+          altCandidates: alts,
         });
         sendResponse(r);
         return;
       }
       // ---- Drive REST API (OAuth) -------------------------------------
+      if (msg.type === "apiTest") {
+        // アクティブな Drive タブから folder/file ID を抽出 → resolveFolderPath
+        // を実行して結果またはエラー詳細を返す。診断用。
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab || !tab.url) {
+            sendResponse({ ok: false, error: "アクティブタブが取れません", code: "NO_TAB" });
+            return;
+          }
+          let ref = null;
+          let m;
+          if ((m = tab.url.match(/\/file\/d\/([^/?#]+)/))) {
+            ref = { type: "file", id: m[1] };
+          } else if ((m = tab.url.match(/\/folders\/([^/?#]+)/))) {
+            ref = { type: "folder", id: m[1] };
+          } else if ((m = tab.url.match(/[?&]id=([^&#]+)/))) {
+            ref = { type: "folder", id: m[1] };
+          }
+          if (!ref) {
+            sendResponse({
+              ok: false,
+              error: "Drive のフォルダ／ファイル URL ではありません: " + tab.url,
+              code: "NO_DRIVE_REF",
+            });
+            return;
+          }
+          const status = await DTE_API.getStatus();
+          if (!status.hasClientId) {
+            sendResponse({
+              ok: false,
+              error: "OAuth Client ID 未設定",
+              code: "NO_CLIENT_ID",
+              status,
+            });
+            return;
+          }
+          try {
+            const path = await DTE_API.getFolderPathCached(ref.id, {
+              isFileId: ref.type === "file",
+            });
+            sendResponse({
+              ok: true,
+              breadcrumbs: path,
+              tabUrl: tab.url,
+              driveRef: ref,
+              status,
+            });
+          } catch (e) {
+            sendResponse({
+              ok: false,
+              error: String(e && e.message || e),
+              code: e && e.code,
+              detail: e && e.status,
+              tabUrl: tab.url,
+              driveRef: ref,
+              status,
+            });
+          }
+        } catch (e) {
+          sendResponse({ ok: false, error: String(e && e.message || e), code: "EXCEPTION" });
+        }
+        return;
+      }
       if (msg.type === "apiResolvePath") {
         try {
           const path = await DTE_API.getFolderPathCached(msg.folderId, {
