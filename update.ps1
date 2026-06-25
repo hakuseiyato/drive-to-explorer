@@ -1,4 +1,4 @@
-# Drive to Explorer - 自動更新スクリプト
+﻿# Drive to Explorer - 自動更新スクリプト
 #
 # 動作:
 #   1. GitHub Releases API から最新の release zip URL を取得
