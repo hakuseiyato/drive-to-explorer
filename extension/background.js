@@ -700,10 +700,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.type === "apiTest") {
         // アクティブな Drive タブから folder/file ID を抽出 → resolveFolderPath
         // を実行して結果またはエラー詳細を返す。診断用。
+        // 検索順: (1) 全 window から Drive タブを探す → (2) フォーカス中タブ
         try {
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          let tab = null;
+          const driveTabs = await chrome.tabs.query({ url: "https://drive.google.com/*" });
+          if (driveTabs && driveTabs.length) {
+            // アクティブな Drive タブを優先、無ければ最初のもの
+            tab = driveTabs.find((t) => t.active) || driveTabs[0];
+          } else {
+            const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            tab = activeTab;
+          }
           if (!tab || !tab.url) {
-            sendResponse({ ok: false, error: "アクティブタブが取れません", code: "NO_TAB" });
+            sendResponse({
+              ok: false,
+              error: "Drive タブが見つかりません",
+              code: "NO_TAB",
+            });
             return;
           }
           let ref = null;
