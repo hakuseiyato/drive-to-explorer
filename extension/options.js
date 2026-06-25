@@ -193,6 +193,54 @@ loadClientId();
 refreshOAuthUi();
 
 // =====================================================================
+// アップデート確認
+// =====================================================================
+const updateStatusEl = $("updateStatus");
+const versionLabel = $("versionLabel");
+
+function escUpd(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+function renderUpdateInfo(info) {
+  if (!info || !info.currentVersion) return;
+  versionLabel.textContent = "v" + info.currentVersion;
+  if (info.ok === false) {
+    updateStatusEl.innerHTML = `<span class="err">アップデート確認失敗: ${escUpd(info.error || "")}</span>`;
+    return;
+  }
+  if (info.isOutdated) {
+    updateStatusEl.innerHTML =
+      `<span class="ok">↑ 新バージョン <strong>v${escUpd(info.latestVersion)}</strong> が利用可能です。</span>` +
+      ` <a href="${escUpd(info.releaseUrl || "")}" target="_blank">リリースを開く</a>` +
+      `<br><span class="muted">更新方法: インストール先フォルダの <code>update.bat</code> をダブルクリック (自動取得・展開・Native Host 再登録)</span>`;
+  } else if (info.latestVersion) {
+    updateStatusEl.innerHTML =
+      `<span class="muted">✓ 最新です (v${escUpd(info.latestVersion)})</span>`;
+  } else {
+    updateStatusEl.innerHTML = "";
+  }
+}
+
+async function loadUpdateInfo() {
+  const r = await chrome.runtime.sendMessage({ type: "getCachedUpdateInfo" });
+  if (r && r.ok) renderUpdateInfo({ ...r, ok: true });
+  else if (r && r.currentVersion) versionLabel.textContent = "v" + r.currentVersion;
+}
+
+$("checkUpdateBtn").addEventListener("click", async () => {
+  $("checkUpdateBtn").disabled = true;
+  updateStatusEl.innerHTML = '<span class="muted">確認中…</span>';
+  const r = await chrome.runtime.sendMessage({ type: "checkUpdate" });
+  $("checkUpdateBtn").disabled = false;
+  renderUpdateInfo(r);
+});
+
+loadUpdateInfo();
+
+// =====================================================================
 // API モードテスト
 // =====================================================================
 const apiTestStatus = $("apiTestStatus");

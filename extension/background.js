@@ -385,6 +385,75 @@ function setBadge(text, color, title) {
   }
 }
 
+// ---- アップデートチェック ----------------------------------------------
+// GitHub Releases API で最新タグを取得し、現在版と比較。
+// 結果は chrome.storage.local.updateAvailable に保存。バッジで通知。
+
+const GITHUB_REPO = "hakuseiyato/drive-to-explorer";
+const RELEASES_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest";
+
+function parseVersion(v) {
+  // "v0.2.3" → [0, 2, 3]
+  return String(v || "")
+    .replace(/^v/, "")
+    .split(".")
+    .map((x) => parseInt(x, 10) || 0);
+}
+function compareVersions(a, b) {
+  const av = parseVersion(a);
+  const bv = parseVersion(b);
+  const len = Math.max(av.length, bv.length);
+  for (let i = 0; i < len; i++) {
+    const ai = av[i] || 0, bi = bv[i] || 0;
+    if (ai !== bi) return ai - bi;
+  }
+  return 0;
+}
+
+async function fetchLatestVersion() {
+  const r = await fetch(RELEASES_API, {
+    headers: { "User-Agent": "DriveToExplorer-Updater" },
+  });
+  if (!r.ok) {
+    throw new Error("GitHub API HTTP " + r.status);
+  }
+  const data = await r.json();
+  const tag = data.tag_name || "";
+  const url = data.html_url || "";
+  return { latestTag: tag, latestVersion: tag.replace(/^v/, ""), url, publishedAt: data.published_at };
+}
+
+async function performUpdateCheck() {
+  const manifest = chrome.runtime.getManifest();
+  const currentVersion = manifest.version;
+  try {
+    const { latestTag, latestVersion, url, publishedAt } = await fetchLatestVersion();
+    const isOutdated = compareVersions(currentVersion, latestVersion) < 0;
+    const result = {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      latestTag,
+      isOutdated,
+      releaseUrl: url,
+      publishedAt,
+      checkedAt: Date.now(),
+    };
+    await chrome.storage.local.set({
+      updateAvailable: isOutdated,
+      latestVersion,
+      latestTag,
+      releaseUrl: url,
+      updateCheckedAt: Date.now(),
+    });
+    // バッジ再描画
+    updateBadge();
+    return result;
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e), currentVersion };
+  }
+}
+
 async function updateBadge() {
   const localRoot = await getLocalRoot();
   if (!localRoot) {
@@ -419,22 +488,45 @@ async function updateBadge() {
         : " (API モード - 独自 Client ID)";
     }
   } catch (_) {}
-  setBadge("", "", "Drive to Explorer — 動作中" + apiNote);
+
+  // アップデート通知
+  let updateNote = "";
+  try {
+    const { updateAvailable, latestVersion } = await chrome.storage.local.get([
+      "updateAvailable", "latestVersion",
+    ]);
+    if (updateAvailable) {
+      setBadge(
+        "↑",
+        "#1a73e8",
+        "Drive to Explorer — 新バージョン v" + latestVersion +
+        " が利用可能です。update.bat を実行してください" + apiNote
+      );
+      return;
+    }
+  } catch (_) {}
+
+  setBadge("", "", "Drive to Explorer — 動作中" + apiNote + updateNote);
 }
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge();
-  // 5 分ごとに再チェック (ホスト登録直後・OAuth サインイン直後の状態反映)
-  try {
-    chrome.alarms.create("dte-badge-refresh", { periodInMinutes: 5 });
-  } catch (_) {}
+  // バッジ更新: 5 分ごと
+  try { chrome.alarms.create("dte-badge-refresh", { periodInMinutes: 5 }); } catch (_) {}
+  // アップデートチェック: 6 時間ごと (GitHub Rate Limit 配慮)
+  try { chrome.alarms.create("dte-update-check", { periodInMinutes: 360, delayInMinutes: 1 }); } catch (_) {}
 });
 chrome.runtime.onStartup.addListener(() => {
   updateBadge();
+  // 起動時にも 1 回チェック (静かにバックグラウンド)
+  performUpdateCheck().catch(() => {});
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm && alarm.name === "dte-badge-refresh") {
     updateBadge();
+  }
+  if (alarm && alarm.name === "dte-update-check") {
+    performUpdateCheck().catch(() => {});
   }
 });
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -572,6 +664,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           altCandidates: alts,
         });
         sendResponse(r);
+        return;
+      }
+      // ---- アップデートチェック ------------------------------------
+      if (msg.type === "checkUpdate") {
+        const r = await performUpdateCheck();
+        sendResponse(r);
+        return;
+      }
+      if (msg.type === "getCachedUpdateInfo") {
+        const cached = await chrome.storage.local.get([
+          "updateAvailable", "latestVersion", "latestTag", "releaseUrl", "updateCheckedAt",
+        ]);
+        const manifest = chrome.runtime.getManifest();
+        sendResponse({
+          ok: true,
+          currentVersion: manifest.version,
+          ...cached,
+        });
         return;
       }
       // ---- Drive REST API (OAuth) -------------------------------------

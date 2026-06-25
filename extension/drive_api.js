@@ -63,23 +63,11 @@ const DTE_API = (() => {
     await chrome.storage.session.remove(PATH_CACHE_KEY);
   }
 
-  async function getAuthToken(interactive) {
-    const cached = await getCachedToken();
-    if (cached) {
-      apilog("getAuthToken: cached token hit");
-      return cached;
-    }
-    apilog("getAuthToken: no cached token, interactive=" + interactive);
-
-    const clientId = await getClientId();
-    if (!clientId) {
-      apilog("getAuthToken: NO_CLIENT_ID");
-      const e = new Error("OAuth Client ID 未設定");
-      e.code = "NO_CLIENT_ID";
-      throw e;
-    }
-
+  // 単発の launchWebAuthFlow 呼び出し (内部用)
+  function _doAuthFlow(clientId, interactive) {
     const redirectUri = chrome.identity.getRedirectURL();
+    // include_granted_scopes=true + 既存承認済みなら interactive: false でも
+    // Google セッションが生きていれば silent に access_token が取れる
     const url =
       "https://accounts.google.com/o/oauth2/v2/auth" +
       "?client_id=" + encodeURIComponent(clientId) +
@@ -96,7 +84,7 @@ const DTE_API = (() => {
             const msg =
               (chrome.runtime.lastError && chrome.runtime.lastError.message) ||
               "認可フロー失敗";
-            apilog("launchWebAuthFlow error:", msg);
+            apilog("launchWebAuthFlow error (interactive=" + interactive + "):", msg);
             const e = new Error(msg);
             e.code = interactive ? "AUTH_FAILED" : "NO_INTERACTIVE_TOKEN";
             reject(e);
@@ -116,12 +104,55 @@ const DTE_API = (() => {
             reject(e);
             return;
           }
-          apilog("launchWebAuthFlow success, expires_in=" + expIn);
+          apilog("launchWebAuthFlow success (interactive=" + interactive + "), expires_in=" + expIn);
           await setCachedToken(token, expIn);
           resolve(token);
         }
       );
     });
+  }
+
+  // 戦略:
+  //   1. session キャッシュの access_token が有効 → 即返す
+  //   2. silent 再取得 (interactive: false) を試行
+  //      Google セッション生存 + アプリ承認済みなら user gesture なしで token 取れる
+  //      これにより SW 再起動 / token 期限切れ で自動復活
+  //   3. silent 失敗 + 明示的に interactive 許可されている → interactive: true で認可
+  //   4. interactive 不可 → 失敗
+  async function getAuthToken(interactive) {
+    const cached = await getCachedToken();
+    if (cached) {
+      apilog("getAuthToken: cached token hit");
+      return cached;
+    }
+    apilog("getAuthToken: no cached token, interactive=" + interactive);
+
+    const clientId = await getClientId();
+    if (!clientId) {
+      apilog("getAuthToken: NO_CLIENT_ID");
+      const e = new Error("OAuth Client ID 未設定");
+      e.code = "NO_CLIENT_ID";
+      throw e;
+    }
+
+    // Step 1: silent 再取得を試みる
+    try {
+      const tok = await _doAuthFlow(clientId, false);
+      apilog("getAuthToken: silent re-auth 成功");
+      return tok;
+    } catch (e) {
+      apilog("getAuthToken: silent re-auth 失敗 code=" + e.code);
+      if (!interactive) {
+        // 上位から interactive 不可と指示されていたら、ここで失敗
+        const err = new Error("silent 再取得失敗。サインインボタンを押してください");
+        err.code = "NEEDS_INTERACTIVE";
+        throw err;
+      }
+    }
+
+    // Step 2: interactive で再認可
+    apilog("getAuthToken: trying interactive auth");
+    return _doAuthFlow(clientId, true);
   }
 
   async function signIn() {
@@ -143,9 +174,10 @@ const DTE_API = (() => {
   }
 
   // 429 / 5xx は指数バックオフでリトライ (最大 2 回)
+  // 401 (token 期限切れ) はキャッシュをクリアしてエラーコード 401 を上に投げる
   async function apiGet(url, token) {
     const MAX_ATTEMPTS = 3;
-    const BACKOFF_MS = [200, 600]; // 1回目失敗後 200ms, 2回目失敗後 600ms
+    const BACKOFF_MS = [200, 600];
     let lastErr = null;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       let r;
@@ -154,7 +186,6 @@ const DTE_API = (() => {
           headers: { Authorization: "Bearer " + token },
         });
       } catch (e) {
-        // ネットワークエラー (オフライン等) もリトライ対象
         lastErr = new Error("Drive API fetch failed: " + e.message);
         lastErr.status = 0;
         if (attempt < MAX_ATTEMPTS - 1) {
@@ -164,6 +195,14 @@ const DTE_API = (() => {
         throw lastErr;
       }
       if (r.ok) return r.json();
+      // 401: token 期限切れ → セッションキャッシュ破棄
+      if (r.status === 401) {
+        apilog("apiGet: 401, clearing cached token");
+        await clearCachedToken();
+        const err = new Error("Drive API 401: unauthorized (token expired)");
+        err.status = 401;
+        throw err;
+      }
       const isTransient = r.status === 429 || (r.status >= 500 && r.status < 600);
       const text = await r.text().catch(() => "");
       const err = new Error("Drive API " + r.status + ": " + text.slice(0, 200));
@@ -203,19 +242,24 @@ const DTE_API = (() => {
     if (!folderId) throw new Error("folderId 空");
     const opts = options || {};
 
-    let token;
-    try {
-      token = await getAuthToken(false);
-    } catch (e) {
-      if (e.code === "NO_CLIENT_ID") throw e;
-      // 非対話で取れない場合は対話モード
-      // ネットワークエラーで対話に流すのは避けたいが、
-      // chrome.identity.launchWebAuthFlow 自体は内部接続性に依存しないため、
-      // ここで interactive に切り替えるのは「キャッシュ無し / 期限切れ」と等価
-      token = await getAuthToken(true);
-    }
+    // getAuthToken 内部で silent → interactive の順に試行される
+    // 上位から interactive 不許可指示は無いため true を渡す
+    // (内部的に silent で成功すればユーザー操作は発生しない)
+    let token = await getAuthToken(true);
 
-    let current = await getFile(folderId, token);
+    let current;
+    try {
+      current = await getFile(folderId, token);
+    } catch (e) {
+      // 401 なら token を再取得して 1 回リトライ
+      if (e.status === 401) {
+        apilog("resolveFolderPath: 401 detected, retrying with fresh token");
+        token = await getAuthToken(true);
+        current = await getFile(folderId, token);
+      } else {
+        throw e;
+      }
+    }
 
     // ショートカットの場合はターゲットを参照
     if (current.shortcutDetails && current.shortcutDetails.targetId) {

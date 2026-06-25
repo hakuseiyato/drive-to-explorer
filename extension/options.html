@@ -23,8 +23,13 @@
   </style>
 </head>
 <body>
-  <h1>Drive to Explorer - 設定</h1>
-  <p class="lead">Drive for desktop がマウントされているローカルのルートパスを指定します。複数指定する場合は 1 行に 1 つずつ。</p>
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+    <h1 style="margin:0;">Drive to Explorer - 設定</h1>
+    <span class="muted" id="versionLabel" style="font-size:12px;"></span>
+    <button id="checkUpdateBtn" style="margin-left:auto;">アップデート確認</button>
+  </div>
+  <div class="status" id="updateStatus" style="min-height:0;margin-top:6px;"></div>
+  <p class="lead" style="margin-top:8px;">Drive for desktop がマウントされているローカルのルートパスを指定します。複数指定する場合は 1 行に 1 つずつ。</p>
   <p class="muted">
     例: <code>M:\</code> や <code>G:\</code>。Drive 階層 (マイドライブ / 共有ドライブ / フォルダ名…) が、このルート配下にそのままミラーされていることが前提です。<br>
     複数指定すると、上から順に試行して最初に存在するパスを使います。
