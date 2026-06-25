@@ -545,14 +545,26 @@ updateBadge();
 // ---- コンテキストメニュー --------------------------------------------
 
 function registerContextMenu() {
-  // onInstalled は更新時にも発火するため、removeAll で二重登録を防ぐ
+  // onInstalled / onStartup が連続発火するとレースで duplicate id エラーになるため
+  // removeAll 後の create を try/catch + callback で受け、エラーは silently ignore
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: CONTEXT_MENU_ID,
-      title: "エクスプローラーで開く",
-      contexts: ["page", "selection", "link"],
-      documentUrlPatterns: ["https://drive.google.com/*"],
-    });
+    try {
+      chrome.contextMenus.create(
+        {
+          id: CONTEXT_MENU_ID,
+          title: "エクスプローラーで開く",
+          contexts: ["page", "selection", "link"],
+          documentUrlPatterns: ["https://drive.google.com/*"],
+        },
+        () => {
+          // callback 内で lastError をクリア (duplicate id 等の警告を握り潰す)
+          // 既に存在していても害はないので無視
+          void chrome.runtime.lastError;
+        }
+      );
+    } catch (_) {
+      // create が同期的に投げる場合 (duplicate id) も握り潰す
+    }
   });
 }
 
