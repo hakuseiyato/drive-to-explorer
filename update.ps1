@@ -117,7 +117,8 @@ if (-not $nestedDir) {
 
 # ---- ブラウザが起動中だと .exe を上書きできない可能性があるので警告 ----
 $browserProcs = @("chrome", "msedge", "brave", "vivaldi", "chromium") |
-    ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue }
+    ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue } |
+    Where-Object { $_ -ne $null }
 if ($browserProcs) {
     Write-Host ""
     Write-Host "[警告] 以下のブラウザが起動中です:" -ForegroundColor Yellow
