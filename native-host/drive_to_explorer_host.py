@@ -55,8 +55,10 @@ STATUS_FILE = os.path.join(UPDATE_DIR, "status.json")
 # 既定の配布元リポジトリ（拡張から repo が渡らなかった場合のフォールバック）
 DEFAULT_REPO = "hakuseiyato/drive-to-explorer"
 
-# CreateProcess フラグ: 親（このホスト）終了後も updater を生かす
-_DETACHED_PROCESS = 0x00000008
+# CreateProcess フラグ: ウィンドウ非表示で別プロセスグループとして起動。
+# stdin/stdout/stderr=DEVNULL + close_fds により親終了後も updater は生存する。
+# 注意: DETACHED_PROCESS はコンソール非継承となり powershell -File が走らないため
+#       使わない（CREATE_NO_WINDOW と併用すると CreateProcess 自体が失敗する）。
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -159,7 +161,7 @@ def start_update(repo: str) -> dict:
         subprocess.Popen(
             cmd,
             close_fds=True,
-            creationflags=_DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW,
+            creationflags=_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

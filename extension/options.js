@@ -247,6 +247,8 @@ loadUpdateInfo();
 //   ブラウザ再起動・コピペ・bat 実行はいずれも不要。
 // ---------------------------------------------------------------------
 const applyUpdateBtn = $("applyUpdateBtn");
+const updateProgress = $("updateProgress");
+const updateProgressFill = $("updateProgressFill");
 
 const UPDATE_STATE_LABEL = {
   starting: "更新を開始しています…",
@@ -258,6 +260,30 @@ const UPDATE_STATE_LABEL = {
   error: "更新エラー",
   unknown: "状態を確認中…",
 };
+
+// 各状態のおおよその進捗率（バー表示用）
+const UPDATE_STATE_PCT = {
+  starting: 8,
+  downloading: 30,
+  extracting: 60,
+  waiting: 72,
+  swapping: 88,
+  done: 100,
+};
+
+function showProgress(pct, variant) {
+  if (!updateProgress) return;
+  updateProgress.classList.add("active");
+  updateProgress.classList.toggle("err", variant === "err");
+  updateProgress.classList.toggle("done", variant === "done");
+  if (typeof pct === "number") updateProgressFill.style.width = pct + "%";
+}
+
+function hideProgress() {
+  if (!updateProgress) return;
+  updateProgress.classList.remove("active", "err", "done");
+  updateProgressFill.style.width = "0%";
+}
 
 let updateApplying = false;
 
@@ -278,6 +304,7 @@ async function pollUpdateStatus() {
       continue;
     }
     if (r.state === "error") {
+      showProgress(100, "err");
       updateStatusEl.innerHTML =
         `<span class="err">更新に失敗しました: ${escUpd(r.error || "")}</span>` +
         `<br><span class="muted">フォールバック: インストール先フォルダの <code>update.bat</code> を実行してください。</span>`;
@@ -287,6 +314,7 @@ async function pollUpdateStatus() {
       return;
     }
     if (r.state === "done") {
+      showProgress(100, "done");
       updateStatusEl.innerHTML =
         `<span class="ok">✓ v${escUpd(r.version || "")} に更新しました。拡張を再読み込みします…</span>`;
       setTimeout(() => {
@@ -296,8 +324,11 @@ async function pollUpdateStatus() {
       return;
     }
     const label = UPDATE_STATE_LABEL[r.state] || r.state;
+    const pct = UPDATE_STATE_PCT[r.state];
+    if (typeof pct === "number") showProgress(pct);
     updateStatusEl.innerHTML = `<span class="muted">${escUpd(label)}</span>`;
   }
+  showProgress(100, "err");
   updateStatusEl.innerHTML =
     '<span class="err">更新がタイムアウトしました。</span>' +
     '<br><span class="muted">フォールバック: <code>update.bat</code> を実行してください。</span>';
@@ -319,6 +350,7 @@ if (applyUpdateBtn) {
     updateApplying = true;
     applyUpdateBtn.disabled = true;
     $("checkUpdateBtn").disabled = true;
+    showProgress(8);
     updateStatusEl.innerHTML = '<span class="muted">更新を開始しています…</span>';
 
     let r;
@@ -330,6 +362,7 @@ if (applyUpdateBtn) {
 
     if (!r || r.ok === false || !r.updating) {
       const err = (r && r.error) || "Native Host から応答がありません";
+      showProgress(100, "err");
       updateStatusEl.innerHTML =
         `<span class="err">更新を開始できませんでした: ${escUpd(err)}</span>` +
         `<br><span class="muted">Native Host が未登録の可能性があります。<code>install.bat</code> を実行してください。</span>`;

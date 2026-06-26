@@ -78,6 +78,20 @@
     .status { margin-top: 12px; min-height: 1.4em; font-size: 13px; }
     hr { display: none; }
 
+    /* 更新進捗バー */
+    .progress {
+      display: none; height: 8px; background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 999px; overflow: hidden; margin-top: 10px;
+    }
+    .progress.active { display: block; }
+    .progress > .fill {
+      height: 100%; width: 0%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), #7bc0ff);
+      transition: width .4s ease;
+    }
+    .progress.err > .fill { background: var(--danger); }
+    .progress.done > .fill { background: var(--ok); }
+
     /* 権限ハイライト */
     .scope-note {
       border-left: 3px solid var(--accent); background: rgba(77,163,255,0.08);
@@ -101,6 +115,7 @@
     「今すぐ更新」で最新版を自動ダウンロード→適用→拡張の自動再読み込みまで行います
     （ブラウザ再起動・コピペ・<code>bat</code> 実行は不要）。
   </p>
+  <div class="progress" id="updateProgress"><div class="fill" id="updateProgressFill"></div></div>
   <div class="status" id="updateStatus" style="min-height:0; margin-top:8px;"></div>
 
   <!-- ローカルルートパス -->
