@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Drive to Explorer",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Google Drive (Web) で表示中のフォルダを Windows エクスプローラーで開く。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzPqaWRAfzMguxqvf8WduRCvfmRyCfjcPoCsif+hxRQ4iFyR8yzEAhp4P++5zSHnmHyjRyp0zlr5xD4dmGu0rISREIU/3gwZ33pR0U2+MuPuTMQ42DY2tgvuxPdVF34DVijaOq/UmEFewzJY+6+60vz+xIm2srPjLliATSIu7TO33nlaje5xjr1XgPwgHY2yqFAPniIx7MqGpeR5JLrWe3EOt7ViFSj0fyOYCLLLQN7R9Sy3TBGi2G3yUA0dyJGdlLrYEeLqUtF01vXSRWv/kQjnURO4hvzfAH+98nU5FV0/xS0WLI9ESOF0J5VO2RYFwTa07L4oiHY87Vw5lBUhHwwIDAQAB",
   "permissions": [

@@ -258,6 +258,9 @@ def main() -> None:
                 resp = {"ok": False, "error": str(e)}
                 log("error: " + traceback.format_exc())
             send_message(resp)
+            if resp.get("updating"):
+                log("exiting to release exe lock for updater")
+                break
     except Exception:
         log("fatal: " + traceback.format_exc())
         sys.exit(1)
