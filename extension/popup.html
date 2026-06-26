@@ -28,6 +28,13 @@
     <div class="path" id="localPath">―</div>
   </div>
   <div class="row" id="status"></div>
+  <div class="row" id="signinRow" style="display:none;">
+    <div class="muted" style="margin-bottom:6px;">
+      ⚠ API を使わず Drive 画面から階層を推定したため、深い階層では不正確になります。<br>
+      サインインすると Drive API で正確なパス（共有ドライブ含む）を取得します。
+    </div>
+    <button id="signinBtn">Google でサインイン</button>
+  </div>
   <div class="actions">
     <button class="primary" id="openBtn" disabled>エクスプローラーで開く</button>
     <button id="copyBtn" disabled>パスをコピー</button>

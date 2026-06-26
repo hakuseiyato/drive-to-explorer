@@ -68,13 +68,17 @@ const DTE_API = (() => {
     const redirectUri = chrome.identity.getRedirectURL();
     // include_granted_scopes=true + 既存承認済みなら interactive: false でも
     // Google セッションが生きていれば silent に access_token が取れる
-    const url =
+    let url =
       "https://accounts.google.com/o/oauth2/v2/auth" +
       "?client_id=" + encodeURIComponent(clientId) +
       "&response_type=token" +
       "&redirect_uri=" + encodeURIComponent(redirectUri) +
       "&scope=" + encodeURIComponent(SCOPE) +
       "&include_granted_scopes=true";
+    // silent (非対話) 時は prompt=none を付け、Google セッションが生きていれば
+    // UI を出さずにトークンを発行させる。これが無いと Google が同意/アカウント選択
+    // 画面を出そうとし、非対話モードでは描画できず必ず失敗する。
+    if (!interactive) url += "&prompt=none";
 
     return new Promise((resolve, reject) => {
       chrome.identity.launchWebAuthFlow(
@@ -242,10 +246,11 @@ const DTE_API = (() => {
     if (!folderId) throw new Error("folderId 空");
     const opts = options || {};
 
-    // getAuthToken 内部で silent → interactive の順に試行される
-    // 上位から interactive 不許可指示は無いため true を渡す
-    // (内部的に silent で成功すればユーザー操作は発生しない)
-    let token = await getAuthToken(true);
+    // 自動解決経路 (popup / content からの apiResolvePath) はユーザージェスチャが
+    // 伝播しないため interactive 認証は成立しない。silent 専用 (false) で呼び、
+    // トークンが無ければ NEEDS_INTERACTIVE を投げて上位に「サインインが必要」と伝える。
+    // 対話的サインインはオプション/ popup の明示ボタン (signIn) からのみ行う。
+    let token = await getAuthToken(false);
 
     let current;
     try {
@@ -254,7 +259,7 @@ const DTE_API = (() => {
       // 401 なら token を再取得して 1 回リトライ
       if (e.status === 401) {
         apilog("resolveFolderPath: 401 detected, retrying with fresh token");
-        token = await getAuthToken(true);
+        token = await getAuthToken(false);
         current = await getFile(folderId, token);
       } else {
         throw e;

@@ -67,9 +67,17 @@ async function refresh() {
   }
 }
 
-$("openBtn").addEventListener("click", async () => {
+// source が "api" でない＝Drive 画面からの推定で深い階層が欠落しうる。
+// folderId があれば本来 API で解決できるはずなので、サインインを促す。
+function maybeOfferSignin(full) {
+  const canUseApi = full && full.folderId && full.source !== "api";
+  $("signinRow").style.display = canUseApi ? "" : "none";
+}
+
+async function doOpen() {
   const status = $("status");
   $("openBtn").disabled = true;
+  $("signinRow").style.display = "none";
   status.textContent = "完全パスを取得中…";
 
   // user activation を伝播するため popup から直接 executeScript で取得
@@ -89,7 +97,11 @@ $("openBtn").addEventListener("click", async () => {
     }
     $("openBtn").disabled = false;
     const err = (openResp && openResp.error) || "不明なエラー";
-    status.innerHTML = `<span class="err">起動失敗: ${err}</span>`;
+    const hint = full.source !== "api" && full.folderId
+      ? '<br><span class="muted">API 未使用のため階層が不正確な可能性があります。下のボタンでサインインしてください。</span>'
+      : "";
+    status.innerHTML = `<span class="err">起動失敗: ${err}</span>${hint}`;
+    maybeOfferSignin(full);
     return;
   }
 
@@ -102,6 +114,25 @@ $("openBtn").addEventListener("click", async () => {
   $("openBtn").disabled = false;
   const err = (fallbackResp && fallbackResp.error) || "不明なエラー";
   status.innerHTML = `<span class="err">起動失敗: ${err}<br>右クリックメニューからの起動もお試しください。</span>`;
+  maybeOfferSignin(full);
+}
+
+$("openBtn").addEventListener("click", doOpen);
+
+$("signinBtn").addEventListener("click", async () => {
+  const status = $("status");
+  $("signinBtn").disabled = true;
+  status.textContent = "サインイン中…";
+  const resp = await chrome.runtime.sendMessage({ type: "apiSignIn" });
+  $("signinBtn").disabled = false;
+  if (!resp || !resp.ok) {
+    status.innerHTML = `<span class="err">サインイン失敗: ${(resp && resp.error) || "不明"}</span>`;
+    return;
+  }
+  $("signinRow").style.display = "none";
+  status.innerHTML = '<span class="muted">サインインしました。もう一度開きます…</span>';
+  // サインイン直後に再解決して開く (今度は API が効く)
+  await doOpen();
 });
 
 $("copyBtn").addEventListener("click", async () => {
