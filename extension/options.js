@@ -215,7 +215,7 @@ function renderUpdateInfo(info) {
     updateStatusEl.innerHTML =
       `<span class="ok">↑ 新バージョン <strong>v${escUpd(info.latestVersion)}</strong> が利用可能です。</span>` +
       ` <a href="${escUpd(info.releaseUrl || "")}" target="_blank">リリースを開く</a>` +
-      `<br><span class="muted">更新方法: インストール先フォルダの <code>update.bat</code> をダブルクリック (自動取得・展開・Native Host 再登録)</span>`;
+      `<br><span class="muted">上の <strong>「今すぐ更新」</strong> ボタンでワンクリック更新できます（bat 実行・再起動不要）。</span>`;
   } else if (info.latestVersion) {
     updateStatusEl.innerHTML =
       `<span class="muted">✓ 最新です (v${escUpd(info.latestVersion)})</span>`;
@@ -239,6 +239,109 @@ $("checkUpdateBtn").addEventListener("click", async () => {
 });
 
 loadUpdateInfo();
+
+// ---------------------------------------------------------------------
+// ワンクリック更新の適用（Native Host + updater.ps1 が実体）
+//   DL → 展開 → ファイル入替 を Host 側で実行し、進捗をポーリング表示。
+//   done を検知したら chrome.runtime.reload() で新バージョンを反映。
+//   ブラウザ再起動・コピペ・bat 実行はいずれも不要。
+// ---------------------------------------------------------------------
+const applyUpdateBtn = $("applyUpdateBtn");
+
+const UPDATE_STATE_LABEL = {
+  starting: "更新を開始しています…",
+  downloading: "最新版をダウンロード中…",
+  extracting: "展開中…",
+  waiting: "準備中（ホスト終了待ち）…",
+  swapping: "ファイルを入れ替え中…",
+  done: "更新完了！",
+  error: "更新エラー",
+  unknown: "状態を確認中…",
+};
+
+let updateApplying = false;
+
+async function pollUpdateStatus() {
+  const maxTries = 60; // 2s 間隔 × 60 = 最大 2 分
+  for (let i = 0; i < maxTries; i++) {
+    await new Promise((res) => setTimeout(res, 2000));
+    let r;
+    try {
+      r = await chrome.runtime.sendMessage({ type: "updateStatus" });
+    } catch (_) {
+      r = null;
+    }
+    // 入替中はホスト exe が一時的にロックされ応答が取れないことがある。
+    // その間は「適用中」とみなしてポーリングを継続する。
+    if (!r || r.ok === false || !r.state || r.state === "unknown") {
+      updateStatusEl.innerHTML = '<span class="muted">適用中…</span>';
+      continue;
+    }
+    if (r.state === "error") {
+      updateStatusEl.innerHTML =
+        `<span class="err">更新に失敗しました: ${escUpd(r.error || "")}</span>` +
+        `<br><span class="muted">フォールバック: インストール先フォルダの <code>update.bat</code> を実行してください。</span>`;
+      applyUpdateBtn.disabled = false;
+      $("checkUpdateBtn").disabled = false;
+      updateApplying = false;
+      return;
+    }
+    if (r.state === "done") {
+      updateStatusEl.innerHTML =
+        `<span class="ok">✓ v${escUpd(r.version || "")} に更新しました。拡張を再読み込みします…</span>`;
+      setTimeout(() => {
+        try { chrome.runtime.reload(); } catch (_) {}
+      }, 1500);
+      updateApplying = false;
+      return;
+    }
+    const label = UPDATE_STATE_LABEL[r.state] || r.state;
+    updateStatusEl.innerHTML = `<span class="muted">${escUpd(label)}</span>`;
+  }
+  updateStatusEl.innerHTML =
+    '<span class="err">更新がタイムアウトしました。</span>' +
+    '<br><span class="muted">フォールバック: <code>update.bat</code> を実行してください。</span>';
+  applyUpdateBtn.disabled = false;
+  $("checkUpdateBtn").disabled = false;
+  updateApplying = false;
+}
+
+if (applyUpdateBtn) {
+  applyUpdateBtn.addEventListener("click", async () => {
+    if (updateApplying) return;
+    const ok = confirm(
+      "最新版をダウンロードして自動適用します。\n" +
+      "完了後に拡張が自動で再読み込みされます（ブラウザ再起動・bat 実行は不要）。\n\n" +
+      "実行しますか？"
+    );
+    if (!ok) return;
+
+    updateApplying = true;
+    applyUpdateBtn.disabled = true;
+    $("checkUpdateBtn").disabled = true;
+    updateStatusEl.innerHTML = '<span class="muted">更新を開始しています…</span>';
+
+    let r;
+    try {
+      r = await chrome.runtime.sendMessage({ type: "applyUpdate" });
+    } catch (e) {
+      r = { ok: false, error: String(e) };
+    }
+
+    if (!r || r.ok === false || !r.updating) {
+      const err = (r && r.error) || "Native Host から応答がありません";
+      updateStatusEl.innerHTML =
+        `<span class="err">更新を開始できませんでした: ${escUpd(err)}</span>` +
+        `<br><span class="muted">Native Host が未登録の可能性があります。<code>install.bat</code> を実行してください。</span>`;
+      applyUpdateBtn.disabled = false;
+      $("checkUpdateBtn").disabled = false;
+      updateApplying = false;
+      return;
+    }
+
+    pollUpdateStatus();
+  });
+}
 
 // =====================================================================
 // API モードテスト

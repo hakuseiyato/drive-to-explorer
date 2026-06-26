@@ -696,6 +696,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         return;
       }
+      // ---- ワンクリック更新の適用（Native Host に委譲） --------------
+      // Host が updater.ps1 をデタッチ起動 → DL/展開/入替を実行。
+      // 進捗は updateStatus でポーリングし、done で options が reload する。
+      if (msg.type === "applyUpdate") {
+        const r = await sendToHost({ action: "update", repo: GITHUB_REPO });
+        sendResponse(r);
+        return;
+      }
+      if (msg.type === "updateStatus") {
+        const r = await sendToHost({ action: "update_status" });
+        sendResponse(r);
+        return;
+      }
       // ---- Drive REST API (OAuth) -------------------------------------
       if (msg.type === "apiTest") {
         // アクティブな Drive タブから folder/file ID を抽出 → resolveFolderPath

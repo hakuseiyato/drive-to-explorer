@@ -35,6 +35,31 @@ LOG_PATH = os.path.join(tempfile.gettempdir(), "drive_to_explorer_host.log")
 # ドライブレター始まりの絶対パスのみ許可（相対や UNC は拒否）
 _PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
+# --- 自動アップデート用パス解決 -------------------------------------------
+# このホスト自身の場所から「インストールルート」を逆算する。
+#   <install_root>/native-host/drive_to_explorer_host.(exe|py)
+#   <install_root>/extension/ ...
+# exe (PyInstaller) 起動時は sys.executable、py 起動時は __file__ を基準にする。
+if getattr(sys, "frozen", False):
+    HOST_FILE = os.path.abspath(sys.executable)
+else:
+    HOST_FILE = os.path.abspath(__file__)
+NATIVE_HOST_DIR = os.path.dirname(HOST_FILE)
+INSTALL_ROOT = os.path.dirname(NATIVE_HOST_DIR)
+UPDATER_PS1 = os.path.join(NATIVE_HOST_DIR, "updater.ps1")
+
+# 更新作業用の一時領域とステータスファイル（拡張がポーリングで進捗を読む）
+UPDATE_DIR = os.path.join(tempfile.gettempdir(), "dte_update")
+STATUS_FILE = os.path.join(UPDATE_DIR, "status.json")
+
+# 既定の配布元リポジトリ（拡張から repo が渡らなかった場合のフォールバック）
+DEFAULT_REPO = "hakuseiyato/drive-to-explorer"
+
+# CreateProcess フラグ: 親（このホスト）終了後も updater を生かす
+_DETACHED_PROCESS = 0x00000008
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_CREATE_NO_WINDOW = 0x08000000
+
 
 def _build_logger() -> logging.Logger:
     """1MB × 3 世代でローテートするロガー。"""
@@ -94,12 +119,86 @@ def validate_path(path: str) -> str:
     return normalized
 
 
+def _write_status(state: str, **extra) -> None:
+    """更新進捗を status.json に書き出す（拡張がポーリングで読む）。"""
+    obj = {"state": state}
+    obj.update(extra)
+    try:
+        os.makedirs(UPDATE_DIR, exist_ok=True)
+        with open(STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except Exception:
+        log("status write failed: " + traceback.format_exc())
+
+
+def start_update(repo: str) -> dict:
+    """updater.ps1 をデタッチ起動し、即座に応答を返す。
+
+    重い処理（zip DL・展開・ファイル入替）は updater.ps1 側で行う。
+    実行中の exe は自分自身を上書きできないため、ホストは起動役に徹し、
+    応答後すぐ終了する（exe ハンドルが解放され updater が入替可能になる）。
+    """
+    if not os.path.isfile(UPDATER_PS1):
+        return {"ok": False, "error": f"updater.ps1 が見つかりません: {UPDATER_PS1}"}
+
+    _write_status("starting", repo=repo)
+
+    pid = os.getpid()
+    cmd = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-WindowStyle", "Hidden",
+        "-File", UPDATER_PS1,
+        "-Repo", repo,
+        "-InstallRoot", INSTALL_ROOT,
+        "-StatusFile", STATUS_FILE,
+        "-HostPid", str(pid),
+    ]
+    try:
+        subprocess.Popen(
+            cmd,
+            close_fds=True,
+            creationflags=_DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=NATIVE_HOST_DIR,
+        )
+    except Exception as e:
+        _write_status("error", error=str(e))
+        return {"ok": False, "error": f"updater 起動失敗: {e}"}
+
+    log(f"updater launched (pid={pid}, root={INSTALL_ROOT}, repo={repo})")
+    return {"ok": True, "updating": True, "installRoot": INSTALL_ROOT}
+
+
+def read_update_status() -> dict:
+    """updater が書き込んだ進捗を返す。未開始なら state=unknown。"""
+    try:
+        with open(STATUS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {"ok": True, **data}
+    except FileNotFoundError:
+        return {"ok": True, "state": "unknown"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def handle(req: dict) -> dict:
     action = req.get("action")
 
-    # ping は path 不要 (生存確認用)
+    # ping は path 不要 (生存確認用)。version も返してUI側で参照可能にする。
     if action == "ping":
         return {"ok": True, "pong": True}
+
+    # --- 自動アップデート（path 不要） ---
+    if action == "update":
+        repo = req.get("repo") or DEFAULT_REPO
+        return start_update(repo)
+
+    if action == "update_status":
+        return read_update_status()
 
     if action == "exists_many":
         # 複数パスの存在を 1 リクエストで一括チェック (IPC 往復削減)

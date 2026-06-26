@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Drive to Explorer — 配布ガイド</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1d2128; --panel-2: #262b34; --line: #333a45;
+    --text: #e6e9ee; --text-dim: #8b94a3; --accent: #4da3ff; --accent-warm: #ffb03a;
+    --danger: #ff5f6d; --ok: #3fcf8e; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--panel-2); padding: 2px 7px; border-radius: 5px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; color: var(--accent-warm);
+    word-break: break-all;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---- ナビ ---- */
+  nav {
+    position: sticky; top: 0; z-index: 50; background: rgba(20,22,26,0.85);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  }
+  nav .wrap { display: flex; align-items: center; gap: 18px; height: 54px; overflow-x: auto; }
+  nav .brand { font-weight: 700; font-size: 15px; white-space: nowrap; }
+  nav .brand .dot { color: var(--accent); }
+  nav a { color: var(--text-dim); font-size: 13px; white-space: nowrap; font-weight: 600; }
+  nav a:hover { color: var(--text); text-decoration: none; }
+
+  /* ---- ヒーロー ---- */
+  header.hero { padding: 64px 0 48px; text-align: center; position: relative; overflow: hidden; }
+  header.hero::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(600px 300px at 50% -10%, rgba(77,163,255,0.18), transparent 70%);
+    pointer-events: none;
+  }
+  .hero h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.02em; }
+  .hero .tag { color: var(--text-dim); font-size: 17px; margin-top: 14px; }
+  .pills { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  .pill {
+    font-size: 12.5px; padding: 5px 13px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text-dim);
+  }
+  .pill.v { color: var(--accent-warm); border-color: rgba(255,176,58,0.4); }
+
+  /* ---- セクション ---- */
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 6px; }
+  h2 .num { color: var(--accent); font-size: 16px; font-weight: 700; margin-right: 8px; vertical-align: middle; }
+  .sec-lead { color: var(--text-dim); margin-bottom: 22px; }
+
+  /* ---- ステップカード ---- */
+  .steps { display: flex; flex-direction: column; gap: 14px; }
+  .step {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px 20px; display: grid; grid-template-columns: 40px 1fr; gap: 16px; align-items: start;
+  }
+  .step .badge {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #0a0d12;
+    font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .step h3 { font-size: 16px; margin-bottom: 6px; }
+  .step p { color: var(--text-dim); font-size: 14px; }
+  .step ul { color: var(--text-dim); font-size: 14px; margin: 6px 0 0 18px; }
+  .step ul li { margin: 3px 0; }
+
+  /* ---- コピー可能ブロック ---- */
+  .copybox {
+    display: flex; align-items: center; gap: 10px; margin-top: 10px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 8px 8px 12px;
+  }
+  .copybox code { background: none; padding: 0; color: var(--text); font-size: 13px; }
+  .copybox button {
+    margin-left: auto; flex: none; font: inherit; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 5px; padding: 5px 11px; cursor: pointer;
+  }
+  .copybox button:hover { border-color: var(--accent); }
+
+  /* ---- 更新フロー図 ---- */
+  .flow { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
+  .flow .node {
+    background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 12px 16px;
+  }
+  .flow .node b { color: var(--text); }
+  .flow .node span { color: var(--text-dim); font-size: 13.5px; }
+  .flow .arrow { text-align: center; color: var(--accent); font-size: 18px; line-height: 1; }
+
+  /* ---- 注記 ---- */
+  .note {
+    border-radius: 8px; padding: 14px 16px; font-size: 13.5px; margin-top: 14px;
+    border-left: 3px solid var(--accent); background: rgba(77,163,255,0.08); color: var(--text-dim);
+  }
+  .note.warm { border-left-color: var(--accent-warm); background: rgba(255,176,58,0.08); }
+  .note.ok { border-left-color: var(--ok); background: rgba(63,207,142,0.08); }
+  .note strong { color: var(--text); }
+
+  /* ---- スコープ強調 ---- */
+  .scope {
+    display: flex; gap: 14px; align-items: center; background: var(--panel);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; margin-top: 8px;
+  }
+  .scope .ic { font-size: 30px; flex: none; }
+  .scope b { color: var(--ok); }
+
+  /* ---- 折りたたみ ---- */
+  details {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0 18px; margin-bottom: 10px;
+  }
+  details[open] { padding-bottom: 14px; }
+  summary {
+    cursor: pointer; padding: 14px 0; font-weight: 600; font-size: 14.5px; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "›"; color: var(--accent); font-size: 18px; transition: transform .15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details .body { color: var(--text-dim); font-size: 14px; padding-bottom: 4px; }
+  details .body ul { margin: 6px 0 0 18px; }
+
+  footer { padding: 40px 0 64px; color: var(--text-dim); font-size: 13px; text-align: center; border-top: 1px solid var(--line); }
+
+  @media (max-width: 560px) {
+    .hero h1 { font-size: 30px; }
+    .step { grid-template-columns: 1fr; }
+    .step .badge { margin-bottom: -6px; }
+  }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="brand">Drive<span class="dot">→</span>Explorer</span>
+  <a href="#setup">セットアップ</a>
+  <a href="#update">アップデート</a>
+  <a href="#oauth">権限</a>
+  <a href="#trouble">困ったとき</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <h1>Drive to Explorer</h1>
+  <p class="tag">Google Drive (Web) で開いているフォルダを、ワンクリックで Windows エクスプローラーに。</p>
+  <div class="pills">
+    <span class="pill v">v0.3.0</span>
+    <span class="pill">Chrome / Edge / Brave / Vivaldi</span>
+    <span class="pill">Windows 10 / 11</span>
+    <span class="pill">UI からワンクリック更新</span>
+  </div>
+</div></header>
+
+<div class="wrap">
+
+  <!-- 概要 -->
+  <section id="about">
+    <h2>このツールは何をする？</h2>
+    <p class="sec-lead">
+      Drive Web で表示中のフォルダを、Drive for desktop がミラーしているローカルフォルダとして
+      エクスプローラーで即座に開きます。逆方向（エクスプローラー → Drive Web）にも対応。
+    </p>
+    <div class="note">
+      <strong>前提:</strong> ① <a href="https://www.google.com/drive/download/" target="_blank">Drive for desktop</a> がドライブレター（例 <code>I:\</code>）でマウント済み。
+      ② Chromium 系ブラウザ（Chrome / Edge / Brave / Vivaldi）。配布 zip には Native Host の <code>.exe</code> が同梱されているため <strong>Python は不要</strong>です。
+    </div>
+  </section>
+
+  <!-- セットアップ -->
+  <section id="setup">
+    <h2><span class="num">SETUP</span>はじめての導入（4 ステップ）</h2>
+    <p class="sec-lead">配布された zip を、バージョン番号を含まない安定フォルダ（例 <code>F:\Tools\drive-to-explorer\</code>）に解凍してから始めてください。</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="badge">1</div>
+        <div>
+          <h3>拡張機能を読み込む</h3>
+          <p>ブラウザの拡張機能ページ（<code>chrome://extensions</code> / <code>edge://extensions</code> など）を開き、右上の <strong>デベロッパーモードを ON</strong> → <strong>「パッケージ化されていない拡張機能を読み込む」</strong> で、解凍した <code>extension/</code> フォルダを選択します。</p>
+          <p style="margin-top:8px;">読み込むと拡張機能 ID は次の値に固定されます（全 PC 共通）:</p>
+          <div class="copybox">
+            <code id="extid">pkiecgchhhhcgnjjgofmlfobbhacdcge</code>
+            <button data-copy="extid">コピー</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="badge">2</div>
+        <div>
+          <h3>Native Host を登録する</h3>
+          <p><code>native-host\install.bat</code> をダブルクリック。<strong>Extension ID を聞かれたら、そのまま Enter</strong>（上の ID が既定値で入っています）。各ブラウザのレジストリに自動登録されます。</p>
+          <ul>
+            <li>登録後は <strong>ブラウザを完全終了 → 再起動</strong>（タスクマネージャーでプロセスが残っていないか確認）。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="badge">3</div>
+        <div>
+          <h3>ローカルルートパスを設定する</h3>
+          <p>拡張アイコンを右クリック →「オプション」を開き、<strong>ローカルルートパス</strong>に Drive for desktop のドライブレター（例 <code>I:\</code>）を入力 →「ルート存在チェック」→「保存」。</p>
+          <p style="margin-top:6px;">共有ドライブ / マイドライブの配下は自動で順次試行するので、<strong>ルートはドライブレターだけ</strong>で OK です。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="badge">4</div>
+        <div>
+          <h3>Google にサインインする（推奨）</h3>
+          <p>オプション画面の <strong>Drive REST API (OAuth)</strong> セクションで <strong>「サインイン」</strong> をクリック → アカウント選択 →「許可」。配布版は既定 Client ID 同梱なので、これだけで API モードが有効になります。</p>
+          <div class="note warm" style="margin-top:10px;">
+            「このアプリは確認されていません」と出たら、<strong>「詳細」→「Drive to Explorer に移動」</strong>で進みます。自作アプリの標準警告で問題ありません。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note ok">
+      <strong>使い方:</strong> Drive Web でフォルダを開き、右クリック →「フォルダ情報」→「エクスプローラーで開く」。
+      またはツールバーの拡張アイコンから。逆方向はエクスプローラーでフォルダを右クリック →「Drive で開く」（<code>shell-integration\install_shell.bat</code> 実行後）。
+    </div>
+  </section>
+
+  <!-- アップデート -->
+  <section id="update">
+    <h2><span class="num">UPDATE</span>アップデートは UI からワンクリック</h2>
+    <p class="sec-lead">
+      毎回のインストールやコピペは不要です。オプション画面の <strong>「今すぐ更新」</strong> ボタンを押すだけで、
+      ダウンロード → 適用 → 拡張の自動再読み込みまで完結します。
+    </p>
+
+    <div class="flow">
+      <div class="node"><b>① 「今すぐ更新」を押す</b><br><span>オプション画面ヘッダーのボタン。確認ダイアログで OK。</span></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>② 自動でダウンロード＆入れ替え</b><br><span>最新版を取得し、ファイルを上書き。進捗が画面に表示されます。</span></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>③ 自動で再読み込み</b><br><span>完了すると拡張が自動でリロードされ、新バージョンが有効に。<strong>ブラウザ再起動も bat 実行も不要。</strong></span></div>
+    </div>
+
+    <div class="note">
+      ボタンを押す前に、開いている Drive タブを再読み込みしておくとより安全です。
+      まれに更新が失敗した場合のフォールバックとして、インストール先の <code>update.bat</code> をダブルクリックする方法も残してあります。
+    </div>
+    <div class="note warm">
+      <strong>仕組み:</strong> ブラウザ拡張は自分のファイルを書き換えられないため、同梱の Native Host（<code>.exe</code>）が
+      GitHub Releases から最新版を取得・展開し、ファイルを入れ替えます。拡張側は完了を検知して自動リロードします。
+    </div>
+  </section>
+
+  <!-- 権限 -->
+  <section id="oauth">
+    <h2><span class="num">PRIVACY</span>権限とプライバシー</h2>
+    <p class="sec-lead">安心して使えるよう、要求する権限は最小限に絞っています。</p>
+    <div class="scope">
+      <div class="ic">🔒</div>
+      <div>
+        OAuth スコープは <b>drive.metadata.readonly のみ</b>。<br>
+        <span style="color:var(--text-dim);font-size:14px;">フォルダ名と親フォルダ情報だけを参照します。<strong style="color:var(--text)">ファイルの中身は一切読み込みません。</strong>ダウンロードも書き込みも行いません。</span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:14px;">
+      サインインは任意です。未サインインでも Drive 画面の解析（DOM 解析モード）で動作しますが、
+      深い階層や共有ドライブの正確な解決には API モード（サインイン）を推奨します。
+    </div>
+  </section>
+
+  <!-- 困ったとき -->
+  <section id="trouble">
+    <h2><span class="num">HELP</span>困ったとき</h2>
+    <p class="sec-lead">配布先で自己解決できるよう、よくある症状と対処をまとめました。</p>
+
+    <details>
+      <summary>「Native host has exited」「host not found」と出る</summary>
+      <div class="body">
+        Native Host が未登録か、ID 不一致です。
+        <ul>
+          <li><code>native-host\install.bat</code> を再実行（ID を聞かれたら Enter）。</li>
+          <li>実行後、ブラウザを<strong>完全終了 → 再起動</strong>。</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>「今すぐ更新」が失敗する / 進まない</summary>
+      <div class="body">
+        <ul>
+          <li>ネットワーク（GitHub への接続）を確認。</li>
+          <li>開いている Drive タブを再読み込みしてから再試行。</li>
+          <li>それでもダメなら、インストール先の <code>update.bat</code> をダブルクリック（フォールバック）。</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>「ローカルパスが見つかりません」と出る</summary>
+      <div class="body">
+        該当フォルダが Drive for desktop にミラーされているか確認してください。
+        popup や通知に「試したパス」が表示されます。共有ドライブは
+        <code>&lt;root&gt;\共有ドライブ\&lt;ドライブ名&gt;\...</code> 配下にミラーされます。
+        取りこぼす場合は<strong>右クリックメニュー経由</strong>をお試しください。
+      </div>
+    </details>
+
+    <details>
+      <summary>何も起きない / 動作がおかしい</summary>
+      <div class="body">
+        オプション画面の「デバッグ」を ON にすると、ブラウザの開発者ツールに <code>[DTE]</code> ログが出ます。
+        Native Host のログは <code>%TEMP%\drive_to_explorer_host.log</code> に記録されます。
+      </div>
+    </details>
+
+    <details>
+      <summary>アンインストールしたい</summary>
+      <div class="body">
+        ① ブラウザの拡張機能ページから「Drive to Explorer」を削除。
+        ② <code>native-host\uninstall.bat</code> を実行（レジストリから削除）。
+        ③ 右クリックメニューを入れた場合は <code>shell-integration\uninstall_shell.bat</code> も実行。
+      </div>
+    </details>
+  </section>
+
+</div>
+
+<footer>
+  Drive to Explorer — 社内 / 個人利用向けカスタムツール<br>
+  最新リリース: <a href="https://github.com/hakuseiyato/drive-to-explorer/releases" target="_blank">GitHub Releases</a>
+</footer>
+
+<script>
+  // コピー ボタン
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.getElementById(btn.dataset.copy);
+      if (!el) return;
+      navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+        var o = btn.textContent;
+        btn.textContent = 'コピーしました ✓';
+        setTimeout(function () { btn.textContent = o; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>

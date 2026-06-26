@@ -7,6 +7,10 @@ Google Drive (Web) で開いているフォルダを、ワンクリックで Win
 対応ブラウザ: Chrome / Edge / Brave / Vivaldi / Chromium
 対応 OS: Windows 10 / 11
 
+> 📖 **配布先向けガイド**: セットアップ・更新・権限を 1 枚にまとめた [`docs/index.html`](docs/index.html) をブラウザで開いてください（zip 同梱）。
+>
+> 🔄 **v0.3.0+**: オプション画面の「今すぐ更新」ボタンから、**UI だけでアップデート→自動再読み込み**が可能になりました（bat 実行・コピペ・ブラウザ再起動は不要）。
+
 ---
 
 ## 仕組み (要約)
@@ -279,28 +283,31 @@ OAuth は任意機能なので未設定でもバッジは出ません。tooltip 
 
 ## 更新方法
 
-### A. 自動更新 (推奨)
+### A. UI からワンクリック更新 (推奨・v0.3.0+)
 
-インストールフォルダ直下の **`update.bat`** をダブルクリックするだけです。
+オプション画面ヘッダーの **「今すぐ更新」** ボタンを押すだけ。**bat 実行・コピペ・ブラウザ再起動はすべて不要**です。
 
 動作:
-1. GitHub Releases API から最新版を確認
-2. 同じバージョンなら何もしない (`update.bat -Force` で強制再展開)
-3. 新しい zip を一時フォルダにダウンロード → 解凍
-4. 既存ファイルに上書き展開 (`extension/` `native-host/` `shell-integration/` `docs/` `README.md`)
-5. `native-host/install.bat` を自動実行 (拡張機能 ID 既定値を承認)
-6. ブラウザ再起動を促す
+1. 拡張 → Native Host に `update` を送信
+2. Native Host が `updater.ps1` を**デタッチ起動**して即応答（自身は終了し exe ロックを解放）
+3. `updater.ps1` が GitHub Releases から最新 zip を DL → 展開 → 旧ホスト終了待ち → 全ファイル上書き（`extension/` `native-host/`(exe 含む) `shell-integration/` `docs/` `README.md`）
+4. 進捗は `%TEMP%\dte_update\status.json` に記録され、拡張がポーリング表示
+5. `done` を検知すると拡張が `chrome.runtime.reload()` で**自動再読み込み** → 新バージョン反映
 
-ブラウザが起動中だと `drive_to_explorer_host.exe` の上書きに失敗する可能性があるため、事前に終了するのが安全です（update.bat が検知して警告します）。
+> **仕組みのポイント**: ブラウザ拡張は自分自身のファイルを書き換えられないため、ファイル操作は OS 権限を持つ Native Host (`updater.ps1`) に委譲。実行中の exe は自分を上書きできないので、ホストは「起動役」に徹してすぐ終了し、updater が入れ替えます。Native Host は接続ごとに起動されるため、次回呼び出しで自動的に新 exe が使われます（ブラウザ再起動不要）。
+>
+> `manifest.key` により拡張機能 ID は不変なので、`chrome.storage.sync` の ローカルルートパスと OAuth Client ID は更新後も保持されます。OAuth セッションだけは切れることがあるので、必要なら「サインイン」を押し直してください。
 
-### B. 手動更新
+### B. フォールバック: `update.bat`
+
+UI 更新が失敗した場合（ネットワーク不調・ファイルロック等）に備え、従来の `update.bat` も残しています。インストールフォルダ直下の **`update.bat`** をダブルクリック → 最新版を取得・展開し `native-host/install.bat` まで自動実行します。
+
+### C. 手動更新
 
 1. [Releases](https://github.com/hakuseiyato/drive-to-explorer/releases) から最新 zip をダウンロード
 2. 既存インストール先に上書き解凍
 3. `native-host/install.bat` をダブルクリック → Enter で承認
 4. ブラウザを完全終了 → 再起動 → `brave://extensions` で拡張の「↻ 再読み込み」
-
-> `manifest.key` により拡張機能 ID は不変なので、`chrome.storage.sync` に保存された ローカルルートパスと OAuth Client ID は更新後も保持されます。OAuth セッションだけは切れるので、必要なら「サインイン」を押し直してください。
 
 ---
 
