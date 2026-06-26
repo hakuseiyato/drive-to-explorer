@@ -25,6 +25,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# PowerShell 5.1 は既定で古い TLS を使い GitHub への接続に失敗することがあるため TLS1.2 を強制
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {}
+
 $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 
@@ -115,47 +122,75 @@ if (-not $nestedDir) {
     exit 1
 }
 
-# ---- ブラウザが起動中だと .exe を上書きできない可能性があるので警告 ----
-$browserProcs = @("chrome", "msedge", "brave", "vivaldi", "chromium") |
-    ForEach-Object { Get-Process -Name $_ -ErrorAction SilentlyContinue } |
-    Where-Object { $_ -ne $null }
-if ($browserProcs) {
-    Write-Host ""
-    Write-Host "[警告] 以下のブラウザが起動中です:" -ForegroundColor Yellow
-    $browserProcs | Select-Object -ExpandProperty Name -Unique | ForEach-Object { Write-Host "  - $_" }
-    Write-Host "       Native Host .exe の上書きに失敗する可能性があります。"
-    Write-Host "       ブラウザを終了してから再実行することを推奨します。"
-    Write-Host ""
-    $resp = Read-Host "それでも続行しますか? (y/N)"
-    if ($resp -notmatch '^[yY]') {
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
-        exit 0
+# ---- 上書き展開 (ファイル単位・使用中はリトライ) --------------------------
+# 事前のブラウザ起動チェックは行わない:
+#   Edge 等はバックグラウンド常駐でプロセスが残るため誤検出になり、
+#   かつ Native Host .exe はメッセージ受信時のみの短命プロセスなので
+#   常駐していても上書きできることがほとんど。実際に失敗したファイルだけ警告する。
+Write-Host "  展開: $($nestedDir.FullName) -> $ScriptDir"
+
+# 除外（トップレベル名で判定）:
+#   .keys      個人鍵フォルダは触らない
+#   update.bat 実行中の自分自身。上書きすると cmd が再開時にオフセットずれで破損しうる
+#              (update.ps1 は PowerShell が起動時に全文ロード済みなので上書きしても安全)
+$excludeTop = @(".keys", "update.bat")
+
+# 使用中ファイルはリトライしながらコピーする
+function Copy-FileWithRetry {
+    param([string]$Src, [string]$Dst, [int]$Retries = 3, [int]$DelaySec = 2)
+    for ($i = 1; $i -le $Retries; $i++) {
+        try {
+            $parent = Split-Path -Parent $Dst
+            if ($parent -and -not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $Src -Destination $Dst -Force
+            return $true
+        } catch {
+            if ($i -lt $Retries) { Start-Sleep -Seconds $DelaySec } else { return $false }
+        }
     }
 }
 
-# ---- 上書き展開 -----------------------------------------------------------
-Write-Host "  展開: $($nestedDir.FullName) -> $ScriptDir"
-
-# 除外: update.ps1 / update.bat 自身は新しいバージョンの内容で上書きされて構わない
-# 除外: 個人鍵フォルダ .keys/ は触らない
-$excludeDirs = @(".keys")
+$rootLen = $nestedDir.FullName.Length
+$script:failed = @()
 
 Get-ChildItem -Path $nestedDir.FullName -Force | ForEach-Object {
-    if ($excludeDirs -contains $_.Name) {
+    if ($excludeTop -contains $_.Name) {
         Write-Host "  [skip] $($_.Name)" -ForegroundColor DarkGray
         return
     }
-    $dest = Join-Path $ScriptDir $_.Name
-    try {
-        if ($_.PSIsContainer) {
-            Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
-        } else {
-            Copy-Item -Path $_.FullName -Destination $dest -Force
+    if ($_.PSIsContainer) {
+        $before = $script:failed.Count
+        Get-ChildItem -Path $_.FullName -Recurse -File -Force | ForEach-Object {
+            $rel = $_.FullName.Substring($rootLen).TrimStart('\')
+            $dst = Join-Path $ScriptDir $rel
+            if (-not (Copy-FileWithRetry -Src $_.FullName -Dst $dst)) {
+                $script:failed += $rel
+            }
         }
-        Write-Host "  [OK] $($_.Name)" -ForegroundColor Green
-    } catch {
-        Write-Host "  [FAIL] $($_.Name): $($_.Exception.Message)" -ForegroundColor Red
+        if ($script:failed.Count -eq $before) {
+            Write-Host "  [OK] $($_.Name)\" -ForegroundColor Green
+        } else {
+            Write-Host "  [一部失敗] $($_.Name)\" -ForegroundColor Yellow
+        }
+    } else {
+        $dst = Join-Path $ScriptDir $_.Name
+        if (Copy-FileWithRetry -Src $_.FullName -Dst $dst) {
+            Write-Host "  [OK] $($_.Name)" -ForegroundColor Green
+        } else {
+            $script:failed += $_.Name
+        }
     }
+}
+
+if ($script:failed.Count -gt 0) {
+    Write-Host ""
+    Write-Host "[警告] 以下のファイルは使用中で上書きできませんでした:" -ForegroundColor Yellow
+    $script:failed | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+    Write-Host "       ブラウザ (Edge/Chrome/Brave 等) を完全終了してから update.bat を再実行してください。" -ForegroundColor Yellow
+    Write-Host "       タスクマネージャーで msedge.exe / chrome.exe が残っていないか確認すると確実です。" -ForegroundColor Yellow
+    Write-Host ""
 }
 
 # ---- クリーンアップ -------------------------------------------------------
