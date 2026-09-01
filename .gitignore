@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build / packaging
+*.zip
+*.crx
+*.pem
+dist/
+build/
+*.spec
+
+# 拡張機能の秘密鍵 (Chrome Web Store パッケージング時のみ使用、絶対にコミットしない)
+.keys/
+
+# PyInstaller 成果物 (各環境でビルドする想定。リリース時のみアセット添付)
+native-host/drive_to_explorer_host.exe
+
+# Local-only (拡張ID を入れた状態の manifest をうっかり commit しないように)
+# native-host/manifest.local.json
