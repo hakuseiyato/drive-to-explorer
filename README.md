@@ -1,5 +1,7 @@
 # Drive to Explorer
 
+![Drive で開いているフォルダを、エクスプローラーでそのまま開く](docs/img/hero.png)
+
 Google Drive (Web) で開いているフォルダを、ワンクリックで Windows エクスプローラーの対応するローカルフォルダ (Drive for desktop のミラー先) として開く Chromium 系ブラウザ拡張。
 
 ブラウザのサンドボックスから直接 `explorer.exe` は起動できないため、**ブラウザ拡張 (Manifest V3) + Native Messaging Host (Python)** の構成で実現しています。
@@ -7,9 +9,19 @@ Google Drive (Web) で開いているフォルダを、ワンクリックで Win
 対応ブラウザ: Chrome / Edge / Brave / Vivaldi / Chromium
 対応 OS: Windows 10 / 11
 
-> 📖 **配布先向けガイド**: セットアップ・更新・権限を 1 枚にまとめた [`docs/index.html`](docs/index.html) をブラウザで開いてください（zip 同梱）。
+> 🖼 **概要を知りたい方へ**: 何ができるか・仕組み・導入前の注意を 1 枚にまとめた [`docs/intro.html`](docs/intro.html) をブラウザで開いてください。
+>
+> 📖 **セットアップ手順**: 手順・更新・権限をまとめた [`docs/index.html`](docs/index.html) をブラウザで開いてください（zip 同梱）。
 >
 > 🔄 **v0.3.0+**: オプション画面の「今すぐ更新」ボタンから、**UI だけでアップデート→自動再読み込み**が可能になりました（bat 実行・コピペ・ブラウザ再起動は不要）。
+
+---
+
+## 何が変わるか
+
+Drive for desktop はドライブを丸ごとミラーしますが、Web 画面とエクスプローラーは別々の世界です。フォルダ階層が深いほど、同じ場所をもう一度たどる手間が積み上がります。
+
+![これまでは手でたどり直す。導入後はワンクリックで着地する](docs/img/before-after.png)
 
 ---
 
@@ -20,6 +32,8 @@ Google Drive (Web) で開いているフォルダを、ワンクリックで Win
 3. background が「ローカルルートパス」の配下で `<root>\` `<root>\共有ドライブ\` `<root>\マイドライブ\` (および英語版) を順に試行
 4. 存在するパスを Native Messaging で Python ホストに送信
 5. Python ホストが `explorer.exe <path>` を起動
+
+![拡張機能がパスを組み立て、Windows 側の Native Host が explorer.exe を起動する](docs/img/flow.png)
 
 ---
 
@@ -40,6 +54,11 @@ drive-to-explorer/
 │   ├── manifest.json              # Native Messaging Host マニフェスト
 │   ├── install.bat                # レジストリ登録
 │   └── uninstall.bat              # レジストリ削除
+├── docs/
+│   ├── intro.html               # 紹介資料 (何ができるか・仕組み・導入前の注意)
+│   ├── index.html               # セットアップ手順書
+│   ├── GCP_SETUP.md             # 独自 OAuth Client ID の発行手順
+│   └── img/                     # 紹介画像 (README から参照)
 ├── setup.bat / setup.ps1        # 初回セットアップ一括 (配布先はこれをダブルクリック)
 ├── update.bat / update.ps1      # 手動更新のフォールバック
 └── README.md
@@ -174,6 +193,13 @@ v0.2.2+ から **配布版に既定の OAuth Client ID が同梱** されてい�
 3. **「OAuth Client ID」**にコピーしたクライアント ID を貼り付け → 「Client ID 保存」
 4. 「サインイン」ボタンをクリック → Google アカウント選択 → 権限承認
 5. 「✓ サインイン済み」と出れば完了
+
+> **同梱している既定 Client ID について**: Client ID は OAuth 同意画面で誰にでも見える値で、秘密情報ではありません。本拡張は `response_type=token` の implicitフローを使うため Client **Secret** は不要で、リポジトリにも含まれていません。発行されるトークンは**サインインした本人の Drive** に対する`drive.metadata.readonly`（フォルダ名と親子関係の参照のみ）で、
+> 作者のデータにアクセスする手段にはなりません。
+>
+> ただし `manifest.key` を同梱しているため第三者が同じ拡張機能 ID を再現でき、既定 Client ID を使われると作者の GCP プロジェクトのクォータを消費します。そのため既定 Client ID は OAuth 同意画面を「テスト」ステータスで運用しており、**テストユーザーに登録されていないアカウントではサインインできません**。
+>
+> **一般の利用者は自分の Client ID を発行してください。** オプション画面の「セットアップウィザード」に従うか、[docs/GCP_SETUP.md](docs/GCP_SETUP.md) を参照してください。オプション画面に入力した Client ID は既定値より優先されます。
 
 > **挙動**: API は最優先で試行され、失敗時 (Client ID 未設定 / トークン失効 / オフライン) は自動的に DOM 解析にフォールバックします。
 >
