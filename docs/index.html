@@ -217,7 +217,8 @@
         <div class="badge">4</div>
         <div>
           <h3>Google にサインインする（推奨）</h3>
-          <p>オプション画面の <strong>Drive REST API (OAuth)</strong> セクションで <strong>「サインイン」</strong> をクリック → アカウント選択 →「許可」。配布版は既定 Client ID 同梱なので、これだけで API モードが有効になります。</p>
+          <p>オプション画面の <strong>Drive REST API (OAuth)</strong> セクションで <strong>「サインイン」</strong> をクリック → アカウント選択 →「許可」。</p>
+          <p class="muted">既定 Client ID の同意画面は「テスト」ステータスで運用しているため、<strong>テストユーザーに登録されたアカウントのみ</strong>サインインできます。「アクセスをブロック」等で進めない場合は、配布元にテストユーザー登録を依頼するか、オプション画面の<strong>「セットアップウィザードを開く」</strong>から自分の Client ID を発行してください。</p>
           <div class="note warm" style="margin-top:10px;">
             「このアプリは確認されていません」と出たら、<strong>「詳細」→「Drive to Explorer に移動」</strong>で進みます。自作アプリの標準警告で問題ありません。
           </div>
@@ -269,8 +270,8 @@
       </div>
     </div>
     <div class="note" style="margin-top:14px;">
-      サインインは任意です。未サインインでも Drive 画面の解析（DOM 解析モード）で動作しますが、
-      深い階層や共有ドライブの正確な解決には API モード（サインイン）を推奨します。
+      サインインは任意です。未サインインでも Drive 画面の解析（DOM 解析モード）でフォルダは開けますが、<b>ファイル単体 URL・<code>open?id=</code> 形式のリンク・他サイト上のリンクの右クリック</b>は API が必須です。
+      深い階層や共有ドライブの正確な解決にも API モード（サインイン）を推奨します。
     </div>
   </section>
 
