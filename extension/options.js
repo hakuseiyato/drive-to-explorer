@@ -279,7 +279,17 @@ $("oauthSignInBtn").addEventListener("click", async () => {
     oauthStatus.innerHTML = '<span class="ok">✓ サインイン成功。</span>';
     refreshOAuthUi();
   } else {
-    oauthStatus.innerHTML = `<span class="err">サインイン失敗: ${(r && r.error) || ""}</span>`;
+    // 既定 Client ID は同意画面が「テスト」ステータスのため、テストユーザー未登録の
+    // アカウントは必ず弾かれる。押し直しても解決しないので発行経路へ誘導する。
+    const st = await chrome.runtime.sendMessage({ type: "apiStatus" });
+    const hint = st && st.isDefaultClientId
+      ? '<br><span class="muted">同梱の既定 Client ID は限定公開のため、多くのアカウントでは' +
+        "許可されません。上の<b>「セットアップウィザードを開く」</b>から自分の " +
+        "OAuth Client ID を発行してください（無料・5 ステップ）。<br>" +
+        "認可画面を自分で閉じた場合は、もう一度「サインイン」を試してください。</span>"
+      : "";
+    oauthStatus.innerHTML =
+      `<span class="err">サインイン失敗: ${(r && r.error) || ""}</span>` + hint;
   }
 });
 
@@ -541,7 +551,7 @@ $("apiTestBtn").addEventListener("click", async () => {
     "NO_TAB": "アクティブタブが取れません。Drive タブを開いた状態でテストしてください。",
     "NO_DRIVE_REF": "現在のタブが Drive のフォルダ／ファイル URL ではありません。",
     "NO_CLIENT_ID": "OAuth Client ID が未設定です (空文字)。配布版なら自動的に既定値が使われるはずなので、storage 異常の可能性。",
-    "AUTH_FAILED": "認可フロー失敗。「サインイン」ボタンを押してやり直してください。",
+    "AUTH_FAILED": "認可フローが完了しませんでした。同梱の既定 Client ID は OAuth 同意画面が「テスト」ステータスのため、テストユーザーに登録されていないアカウントでは必ず弾かれます。上の「セットアップウィザードを開く」から自分の Client ID を発行してください。認可画面を自分で閉じた場合は、もう一度「サインイン」を試してください。",
     "NO_INTERACTIVE_TOKEN": "非対話モードでトークン取得失敗。「サインイン」ボタンを押してください (Drive ページからの呼び出しは user activation 不足で interactive が動かないため、options 画面 / popup から明示的にサインインが必要)。",
     "EXCEPTION": "予期しない例外。デバッグログを ON にして DevTools コンソールを確認してください。",
   };

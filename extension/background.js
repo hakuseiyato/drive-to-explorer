@@ -159,7 +159,11 @@ async function ensureLocalRoots() {
 
 // API がなぜ使われなかったかを通知本文に足す。原因不明のまま
 // 「ローカルパスが見つかりません」だけ出る状態を避けるため。
-const SIGNIN_FIXABLE_CODES = ["NEEDS_INTERACTIVE", "NO_INTERACTIVE_TOKEN", "AUTH_FAILED"];
+//
+// AUTH_FAILED を「サインインし直せば直る」側に入れてはいけない。同梱の既定
+// Client ID は OAuth 同意画面が「テスト」ステータスで、テストユーザー未登録の
+// アカウントは必ず弾かれるため、押し直しても永久に解決しない。
+const SIGNIN_FIXABLE_CODES = ["NEEDS_INTERACTIVE", "NO_INTERACTIVE_TOKEN"];
 
 function apiErrorNote(info) {
   const code = info && info.apiErrorCode;
@@ -168,6 +172,14 @@ function apiErrorNote(info) {
     return (
       "\n\nDrive API が未サインインです (" + code + ")。\n" +
       "オプション画面の「サインイン」を実行すると正確なパスを取得できます。"
+    );
+  }
+  if (code === "AUTH_FAILED") {
+    return (
+      "\n\nDrive API の認可が完了しませんでした (" + code + ")。\n" +
+      "同梱の既定 Client ID は限定公開のため、多くのアカウントでは許可されません。\n" +
+      "オプション画面の「セットアップウィザードを開く」から自分の OAuth Client ID を" +
+      "発行してください。"
     );
   }
   return (

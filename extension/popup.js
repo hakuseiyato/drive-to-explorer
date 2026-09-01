@@ -79,9 +79,13 @@ function maybeOfferSignin(full) {
 
 // API がなぜ使われなかったかを 1 行で返す。原因が分からないまま
 // 「ローカルパスが見つかりません」だけ出る状態を避けるため。
-// サインインで解決するのは NEEDS_INTERACTIVE / NO_INTERACTIVE_TOKEN /
-// AUTH_FAILED のみ。それ以外は別の原因なので言い分けする。
-const SIGNIN_FIXABLE = ["NEEDS_INTERACTIVE", "NO_INTERACTIVE_TOKEN", "AUTH_FAILED"];
+//
+// サインインし直せば解決するのは「まだサインインしていない」場合だけ。
+// AUTH_FAILED は認可フローが完了しなかったケースで、同梱の既定 Client ID は
+// OAuth 同意画面が「テスト」ステータスのためテストユーザー未登録のアカウントは
+// 必ず弾かれる。ここでサインインを促すと永久に解決しない案内になるので、
+// 自分の Client ID を発行する経路へ誘導する。
+const SIGNIN_FIXABLE = ["NEEDS_INTERACTIVE", "NO_INTERACTIVE_TOKEN"];
 
 function apiErrorHint(full) {
   if (!full || !full.apiErrorCode) return "";
@@ -92,6 +96,15 @@ function apiErrorHint(full) {
       '<br><span class="err">Drive API が未サインインです ' +
       `(${code})${detail}</span>` +
       '<br><span class="muted">下の「Google でサインイン」を押すと正確なパスを取得できます。</span>'
+    );
+  }
+  if (code === "AUTH_FAILED") {
+    return (
+      `<br><span class="err">Drive API の認可が完了しませんでした (${code})${detail}</span>` +
+      '<br><span class="muted">同梱の既定 Client ID は限定公開のため、多くのアカウントでは' +
+      "許可されません。<b>「設定」→「セットアップウィザードを開く」</b>から自分の " +
+      "OAuth Client ID を発行してください（無料・5 ステップ）。<br>" +
+      "認可画面を自分で閉じた場合は、もう一度サインインを試してください。</span>"
     );
   }
   return (
