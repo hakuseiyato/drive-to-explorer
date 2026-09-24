@@ -235,6 +235,13 @@ async function refreshOAuthUi() {
 
   const st = await chrome.runtime.sendMessage({ type: "apiStatus" });
   if (!st || !st.ok) return;
+  renderAccounts(st.accounts || []);
+  const n = (st.accounts || []).length;
+  if (st.signedIn && n > 1) {
+    oauthStatus.innerHTML =
+      `<span class="ok">✓ ${n} アカウントでサインイン済み — アカウントを順に試してパス解決します。</span>`;
+    return;
+  }
   if (!st.hasClientId) {
     oauthStatus.innerHTML =
       '<span class="muted">Client ID 未設定 — DOM 解析にフォールバックします。</span>';
@@ -252,6 +259,30 @@ async function refreshOAuthUi() {
       '<span class="ok">✓ サインイン済み (独自 Client ID 使用) — API 経由でパス解決します。</span>';
   }
 }
+
+// サインイン済みアカウント一覧（先頭 = 次回最初に試すアカウント）
+function renderAccounts(accounts) {
+  $("oauthAccounts").innerHTML = accounts
+    .map(
+      (email, i) =>
+        `<div class="account-row"><span class="email">${escUpd(email)}</span>` +
+        (i === 0 && accounts.length > 1 ? '<span class="first">最優先</span>' : "") +
+        `<button class="danger" data-email="${escUpd(email)}">サインアウト</button></div>`
+    )
+    .join("");
+}
+
+$("oauthAccounts").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-email]");
+  if (!btn) return;
+  btn.disabled = true;
+  const email = btn.dataset.email;
+  const r = await chrome.runtime.sendMessage({ type: "apiSignOut", email });
+  await refreshOAuthUi();
+  oauthStatus.innerHTML = r && r.ok
+    ? `<span class="muted">${escUpd(email)} をサインアウトしました。</span>`
+    : `<span class="err">サインアウト失敗: ${escUpd((r && r.error) || "")}</span>`;
+});
 
 async function loadClientId() {
   const { oauthClientId = "" } = await chrome.storage.sync.get("oauthClientId");
@@ -276,8 +307,8 @@ $("oauthSignInBtn").addEventListener("click", async () => {
   oauthStatus.textContent = "認可中…";
   const r = await chrome.runtime.sendMessage({ type: "apiSignIn" });
   if (r && r.ok) {
-    oauthStatus.innerHTML = '<span class="ok">✓ サインイン成功。</span>';
-    refreshOAuthUi();
+    await refreshOAuthUi();
+    oauthStatus.innerHTML = `<span class="ok">✓ ${escUpd(r.email || "")} でサインインしました。</span>`;
   } else {
     // 既定 Client ID は同意画面が「テスト」ステータスのため、テストユーザー未登録の
     // アカウントは必ず弾かれる。押し直しても解決しないので発行経路へ誘導する。
@@ -296,8 +327,8 @@ $("oauthSignInBtn").addEventListener("click", async () => {
 $("oauthSignOutBtn").addEventListener("click", async () => {
   const r = await chrome.runtime.sendMessage({ type: "apiSignOut" });
   if (r && r.ok) {
-    oauthStatus.innerHTML = '<span class="muted">サインアウトしました。</span>';
-    refreshOAuthUi();
+    await refreshOAuthUi();
+    oauthStatus.innerHTML = '<span class="muted">すべてのアカウントをサインアウトしました。</span>';
   } else {
     oauthStatus.innerHTML = `<span class="err">サインアウト失敗: ${(r && r.error) || ""}</span>`;
   }

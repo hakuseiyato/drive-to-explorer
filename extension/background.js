@@ -703,7 +703,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     changes.localRoot ||
     changes.localRoots ||
     changes.oauthClientId ||
-    changes.oauthAccessToken
+    changes.oauthAccounts
   ) {
     updateBadge();
   }
@@ -1064,8 +1064,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.type === "apiSignIn") {
         try {
-          await DTE_API.signIn();
-          sendResponse({ ok: true });
+          const r = await DTE_API.signIn();
+          sendResponse({ ok: true, email: r.email });
         } catch (e) {
           sendResponse({ ok: false, error: String(e && e.message || e) });
         }
@@ -1073,7 +1073,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.type === "apiSignOut") {
         try {
-          await DTE_API.signOut();
+          await DTE_API.signOut(msg.email || null);
           sendResponse({ ok: true });
         } catch (e) {
           sendResponse({ ok: false, error: String(e && e.message || e) });
@@ -1098,8 +1098,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (msg.type === "resolveLocalPathToFolderId") {
         try {
-          const folderId = await DTE_API.findFolderIdByLocalPath(msg.localPath);
-          sendResponse({ ok: true, folderId });
+          // ドライブのボリュームラベルから持ち主を得る。旧 Native Host は
+          // unknown action を返すので email=null (従来どおり) にフォールバックする
+          const vol = await sendToHost({ action: "volume_email", path: msg.localPath });
+          const preferEmail = (vol && vol.ok && vol.email) || null;
+          const r = await DTE_API.findFolderIdByLocalPath(msg.localPath, preferEmail);
+          sendResponse({ ok: true, folderId: r.folderId, email: r.email });
         } catch (e) {
           sendResponse({
             ok: false,

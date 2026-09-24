@@ -30,7 +30,7 @@
   // ----------------------------------------------------------------------
   // Explorer → Drive Web リダイレクト
   // URL fragment "#dte_resolve=<encoded local path>" を検出して、
-  // ローカルパス → folderId 解決後 /drive/u/0/folders/<id> に遷移。
+  // ローカルパス → folderId 解決後 /drive/folders/<id>?authuser=<email> に遷移。
   // ----------------------------------------------------------------------
   (function handleDteResolveFragment() {
     const hash = location.hash || "";
@@ -84,12 +84,13 @@
         }
         if (resp && resp.ok && resp.folderId) {
           setMsg("遷移します…", "#a0e0a0");
-          setTimeout(() => {
-            location.replace(
-              "https://drive.google.com/drive/u/0/folders/" +
-                encodeURIComponent(resp.folderId)
-            );
-          }, 200);
+          // 見つけたアカウントを authuser で指定する。/u/0 固定だとブラウザの既定
+          // アカウントで開いてしまい、別アカウントのフォルダは「アクセス権なし」になる
+          const url =
+            "https://drive.google.com/drive/folders/" +
+            encodeURIComponent(resp.folderId) +
+            (resp.email ? "?authuser=" + encodeURIComponent(resp.email) : "");
+          setTimeout(() => location.replace(url), 200);
           return;
         }
         const errMsg = (resp && resp.error) || "解決に失敗しました";

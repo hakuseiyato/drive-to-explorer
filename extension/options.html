@@ -98,6 +98,15 @@
       padding: 10px 14px; border-radius: 6px; margin-top: 12px; font-size: 12.5px; color: var(--text-dim);
     }
     .scope-note strong { color: var(--text); }
+    /* サインイン済みアカウント一覧 */
+    #oauthAccounts { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+    #oauthAccounts:empty { display: none; }
+    .account-row {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+    }
+    .account-row .email { flex: 1; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
+    .account-row .first { font-size: 11px; color: var(--text-dim); }
     input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); vertical-align: middle; }
   </style>
 </head>
@@ -193,9 +202,10 @@
     <div class="actions">
       <button class="primary" id="wizardBtn">セットアップウィザードを開く</button>
       <button id="oauthSaveBtn">Client ID 保存</button>
-      <button id="oauthSignInBtn">サインイン</button>
-      <button class="danger" id="oauthSignOutBtn">サインアウト</button>
+      <button id="oauthSignInBtn">アカウントを追加（サインイン）</button>
+      <button class="danger" id="oauthSignOutBtn">すべてサインアウト</button>
     </div>
+    <div id="oauthAccounts"></div>
     <div class="status" id="oauthStatus"></div>
 
     <div class="scope-note">

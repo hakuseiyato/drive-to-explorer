@@ -296,6 +296,42 @@ def version_info() -> dict:
     }
 
 
+# Drive for desktop はボリュームラベルを "<email> - Google Drive" にする。
+# FAT32 のラベル長制限で末尾は "..." に切られるため、" - " の手前だけを見る。
+# email 自体が長く " - " まで届かず切れた場合は一致させない（誤った email を返さない）。
+_LABEL_EMAIL_RE = re.compile(r"^\s*([^\s@]+@[^\s]+?)\s+-\s")
+
+
+def volume_email(path) -> dict:
+    """path が属するドライブのボリュームラベルから、持ち主の Google アカウントを返す。
+
+    複数アカウントを Drive for desktop でマウントしていると、ドライブレターごとに
+    アカウントが違う。エクスプローラー → Drive で正しいアカウントを開くために使う。
+    特定できなければ email=None（呼び出し側は従来どおりの挙動にフォールバック）。
+    """
+    np = validate_path(path)
+    root = np[:3]
+    label = ""
+    try:
+        import ctypes
+
+        buf = ctypes.create_unicode_buffer(261)
+        if ctypes.windll.kernel32.GetVolumeInformationW(
+            root, buf, len(buf), None, None, None, None, 0
+        ):
+            label = buf.value
+    except Exception:
+        log("volume_email: GetVolumeInformationW failed: " + traceback.format_exc())
+    m = _LABEL_EMAIL_RE.match(label)
+    return {"ok": True, "root": root, "label": label, "email": m.group(1) if m else None}
+
+
+# 最小の動作チェック（ラベル解析のみ）
+assert _LABEL_EMAIL_RE.match("user@example.com - Googl...").group(1) == "user@example.com"
+assert _LABEL_EMAIL_RE.match("Google Drive") is None
+assert _LABEL_EMAIL_RE.match("very.long.name@example-company.co") is None
+
+
 def list_subdirs(paths) -> dict:
     r"""指定パス直下のサブディレクトリ名を列挙する。
 
@@ -352,6 +388,10 @@ def handle(req: dict) -> dict:
     # ローカルルート自動検出（path 不要）
     if action == "detect_roots":
         return detect_roots()
+
+    # ドライブのボリュームラベルから持ち主の Google アカウントを取得
+    if action == "volume_email":
+        return volume_email(req.get("path", ""))
 
     if action == "exists_many":
         # 複数パスの存在を 1 リクエストで一括チェック (IPC 往復削減)
